@@ -1,0 +1,34 @@
+{
+  "$id": "https://schemas.poker.local/identity.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Poker Player",
+  "type": "object",
+  "properties": {
+    "traits": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "title": "Email",
+          "ory.sh/kratos": {
+            "credentials": {
+              "password": { "identifier": true },
+              "code": { "identifier": true, "via": "email" }
+            },
+            "recovery": { "via": "email" },
+            "verification": { "via": "email" }
+          }
+        },
+        "timezone": {
+          "type": "string",
+          "title": "IANA timezone",
+          "description": "Used to grant the daily chip gift at 06:00 in the player's local time.",
+          "default": "UTC"
+        }
+      },
+      "required": ["email"],
+      "additionalProperties": false
+    }
+  }
+}

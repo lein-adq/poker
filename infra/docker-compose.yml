@@ -1,0 +1,102 @@
+name: poker
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: poker
+      POSTGRES_USER: poker
+      POSTGRES_PASSWORD: poker
+    ports: ["5432:5432"]
+    volumes: ["poker-db-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  kratos-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: kratos
+      POSTGRES_USER: kratos
+      POSTGRES_PASSWORD: kratos
+    volumes: ["kratos-db-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kratos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailslurper:
+    image: oryd/mailslurper:latest-smtps
+    ports:
+      - "4436:4436" # web UI — view codes/links sent during local dev
+      - "4437:4437"
+      - "1025:1025"
+
+  kratos-migrate:
+    image: oryd/kratos:v1.3.1
+    depends_on:
+      kratos-db:
+        condition: service_healthy
+    environment:
+      DSN: postgres://kratos:kratos@kratos-db:5432/kratos?sslmode=disable
+    volumes:
+      - ./ory/kratos:/etc/config/kratos
+    command: migrate sql -e --yes
+
+  kratos:
+    image: oryd/kratos:v1.3.1
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    environment:
+      DSN: postgres://kratos:kratos@kratos-db:5432/kratos?sslmode=disable
+    ports:
+      - "4433:4433" # public API
+      - "4434:4434" # admin API
+    volumes:
+      - ./ory/kratos:/etc/config/kratos
+    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
+
+  oathkeeper:
+    image: oryd/oathkeeper:v0.40
+    depends_on: [kratos]
+    ports:
+      - "4455:4455" # proxy — the frontend/API entrypoint
+      - "4456:4456" # api
+    volumes:
+      - ./ory/oathkeeper:/etc/config/oathkeeper
+    command: serve -c /etc/config/oathkeeper/oathkeeper.yml
+
+  api:
+    build:
+      context: ../backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Database=poker;Username=poker;Password=poker"
+      ConnectionStrings__Redis: "redis:6379"
+      Cors__AllowedOrigins__0: "http://localhost:5173"
+    ports: ["8080:8080"]
+
+  web:
+    build:
+      context: ../frontend
+      args:
+        VITE_API_URL: http://localhost:4455
+        VITE_KRATOS_URL: http://localhost:4433
+    depends_on: [api]
+    ports: ["5173:80"]
+
+volumes:
+  poker-db-data:
+  kratos-db-data:

@@ -1,0 +1,96 @@
+version: v1.3.1
+
+dsn: postgres://kratos:kratos@kratos-db:5432/kratos?sslmode=disable&max_conns=20&max_idle_conns=4
+
+serve:
+  public:
+    base_url: http://localhost:4433/
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://localhost:5173
+      allowed_methods: [GET, POST, PUT, PATCH, DELETE]
+      allow_credentials: true
+  admin:
+    base_url: http://kratos:4434/
+
+selfservice:
+  default_browser_return_url: http://localhost:5173/
+  allowed_return_urls:
+    - http://localhost:5173
+
+  methods:
+    password:
+      enabled: false
+    code:
+      passwordless_enabled: true
+      config:
+        lifespan: 15m
+
+  flows:
+    registration:
+      ui_url: http://localhost:5173/auth/register
+      after:
+        code:
+          hooks:
+            # Runs before the identity is committed; a non-2xx response blocks registration.
+            - hook: web_hook
+              config:
+                url: http://api:8080/internal/iam/validate-email
+                method: POST
+                body: file:///etc/config/kratos/hooks/validate-email.jsonnet
+                can_interrupt: true
+                response:
+                  ignore: false
+            # Runs after the identity is committed: upserts the user row and grants the signup bonus.
+            - hook: web_hook
+              config:
+                url: http://api:8080/internal/iam/on-registered
+                method: POST
+                body: file:///etc/config/kratos/hooks/on-registered.jsonnet
+                response:
+                  ignore: true
+            # Logs the new player straight in — without this, registering wouldn't issue a session.
+            - hook: session
+
+    login:
+      ui_url: http://localhost:5173/auth/login
+
+    settings:
+      ui_url: http://localhost:5173/account/settings
+
+    recovery:
+      enabled: true
+      ui_url: http://localhost:5173/auth/recovery
+
+    verification:
+      enabled: true
+      ui_url: http://localhost:5173/auth/verification
+
+log:
+  level: debug
+  format: text
+
+secrets:
+  cookie:
+    - PLEASE-CHANGE-THIS-DEV-ONLY-COOKIE-SECRET
+  cipher:
+    - dev-only-32-byte-secret-key-1234
+
+ciphers:
+  algorithm: xchacha20-poly1305
+
+hashers:
+  algorithm: bcrypt
+  bcrypt:
+    cost: 8
+
+identity:
+  default_schema_id: player
+  schemas:
+    - id: player
+      url: file:///etc/config/kratos/identity.schema.json
+
+courier:
+  smtp:
+    connection_uri: smtps://mailslurper:1025/?skip_ssl_verify=true
