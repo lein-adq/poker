@@ -1,4 +1,4 @@
-using Poker.Application.Tables;
+﻿using Poker.Application.Tables;
 using Poker.Domain.Cards;
 using Poker.GameEngine.Equity;
 using Poker.GameEngine.Hands;
@@ -18,7 +18,8 @@ public sealed record SeatDto(
     bool IsAllIn,
     bool IsFolded,
     IReadOnlyList<CardDto>? HoleCards,
-    string? RevealedHandName);
+    string? RevealedHandName,
+    bool IsSittingOut);
 
 public sealed record PotDto(int Amount, IReadOnlyList<string> WinnerPlayerIds, IReadOnlyList<string> EligiblePlayerIds);
 
@@ -26,6 +27,7 @@ public sealed record HandDto(
     string Street,
     IReadOnlyList<CardDto> Board,
     string? CurrentActorPlayerId,
+    DateTimeOffset? ActionDeadlineUtc,
     IReadOnlyList<PotDto>? Result);
 
 public sealed record EquityDto(string PlayerId, double WinPercent, double TiePercent);
@@ -82,13 +84,15 @@ public sealed record TableStateDto(
                 playerBetState?.IsAllIn ?? false,
                 playerBetState?.IsFolded ?? false,
                 holeCards,
-                revealedHandName);
+                revealedHandName,
+                seat.IsSittingOut);
         }).ToList();
 
         HandDto? handDto = hand is null ? null : new HandDto(
             hand.CurrentStreet.ToString(),
             hand.Board.Select(CardDto.From).ToList(),
             hand.CurrentActorId,
+            table.ActionDeadlineUtc,
             hand.Result?.Pots.Select(p => new PotDto(p.Amount, p.WinnerPlayerIds, p.EligiblePlayerIds)).ToList());
 
         IReadOnlyList<EquityDto>? equity = null;

@@ -1,4 +1,4 @@
-using Poker.Domain.Betting;
+﻿using Poker.Domain.Betting;
 using Poker.Domain.Cards;
 using Poker.GameEngine.Equity;
 
@@ -172,6 +172,29 @@ public sealed class HandEngine
         var potResults = new List<PotResult>();
         foreach (var pot in pots)
         {
+            if (pot.EligiblePlayerIds.Count == 0)
+            {
+                // Every player with a claim to this side pot folded (a short stack was all-in below it,
+                // and the players contesting it above gave up). Nobody won it, so it goes back to the
+                // players who put it in — awarding it to the all-in player instead would hand them chips
+                // from a pot that side pots exist specifically to keep them out of. Each contributor put
+                // in the same amount at this level, so the division is exact.
+                int refund = pot.Amount / pot.ContributorPlayerIds.Count;
+                foreach (var contributor in pot.ContributorPlayerIds)
+                {
+                    CreditPlayer(contributor, refund);
+                }
+                int undivided = pot.Amount % pot.ContributorPlayerIds.Count;
+                if (undivided > 0)
+                {
+                    CreditPlayer(pot.ContributorPlayerIds[0], undivided);
+                }
+
+                // Reported with the contributors as the recipients: they are who the chips went back to.
+                potResults.Add(new PotResult(pot.Amount, pot.ContributorPlayerIds, pot.EligiblePlayerIds));
+                continue;
+            }
+
             if (pot.EligiblePlayerIds.Count == 1)
             {
                 CreditPlayer(pot.EligiblePlayerIds[0], pot.Amount);

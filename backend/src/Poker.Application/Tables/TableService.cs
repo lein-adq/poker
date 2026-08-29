@@ -1,4 +1,4 @@
-using Poker.Application.Abstractions;
+﻿using Poker.Application.Abstractions;
 using Poker.Application.Wallet;
 using Poker.Domain.Betting;
 using Poker.GameEngine.Hands;
@@ -15,9 +15,16 @@ public sealed class TableService(
     ITableRepository repo,
     IActiveTableTracker activeTables,
     IDistributedLock distributedLock,
-    WalletService wallet)
+    WalletService wallet,
+    IClock clock)
 {
     private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>How long a player has to act before the table acts for them.</summary>
+    public static readonly TimeSpan ActionTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>Pause between a hand finishing and the next being dealt, so clients can show the showdown.</summary>
+    public static readonly TimeSpan NextHandDelay = TimeSpan.FromSeconds(3);
 
     public async Task<TableState> CreateTableAsync(TableConfig config)
     {
@@ -34,9 +41,12 @@ public sealed class TableService(
     {
         await MutateAsync(tableId, async table =>
         {
-            if (table.FindSeat(playerId) is not null)
+            if (table.FindSeat(playerId) is { } seatedAlready)
             {
-                return; // already seated, nothing to do
+                // A seated player rejoining is a reconnect: clear the sit-out their dropped connection set.
+                seatedAlready.IsSittingOut = false;
+                seatedAlready.DisconnectedAtUtc = null;
+                return;
             }
 
             if (!await activeTables.TrySetActiveTableAsync(playerId, tableId))
@@ -128,10 +138,17 @@ public sealed class TableService(
                     throw new InvalidOperationException("Fold before leaving a hand you're still in.");
                 }
 
-                int cashOut = seat.Stack;
+                // Pending rebuy chips were already debited from the wallet when the top-up was
+                // requested, so they must be cashed out too rather than silently zeroed.
+                int cashOut = seat.Stack + seat.PendingRebuyChips;
                 seat.PlayerId = null;
                 seat.Stack = 0;
                 seat.PendingRebuyChips = 0;
+
+                // Drop them from the live hand's seat map: they may buy back in during this same hand
+                // and land in the very seat they just vacated, and their now-stale in-hand stack must
+                // not be written over that fresh buy-in.
+                table.HandSeatIndexByPlayerId.Remove(playerId);
 
                 if (table.Config.IsPrivate && !table.Config.UseRealBankroll)
                 {
@@ -172,37 +189,139 @@ public sealed class TableService(
         {
             var hand = table.CurrentHand ?? throw new InvalidOperationException("No hand is in progress.");
             hand.Act(playerId, action, amount);
-            hand.TryAdvance();
-
-            if (hand.Result is not null)
-            {
-                foreach (var p in hand.Players)
-                {
-                    var seat = table.FindSeat(p.PlayerId);
-                    if (seat is not null)
-                    {
-                        seat.Stack = p.Stack;
-                    }
-                }
-                // Deliberately leave the finished HandEngine (with its populated Result) in place
-                // rather than clearing it here, so the showdown/pot result is still visible to a
-                // broadcast taken right after this call. TryStartHand replaces it once the next
-                // hand actually begins.
-                table.Status = TableStatus.WaitingForPlayers;
-
-                // Queued rebuys are only effective once the round they were requested during has ended.
-                foreach (var seat in table.Seats.Where(s => !s.IsEmpty && s.PendingRebuyChips > 0))
-                {
-                    seat.Stack += seat.PendingRebuyChips;
-                    seat.PendingRebuyChips = 0;
-                }
-            }
-
+            AfterAction(table, hand);
             return Task.CompletedTask;
         });
     }
 
-    private static bool TryStartHand(TableState table)
+    /// <summary>
+    /// The shared tail of every action, whether a player took it or their clock ran out and the table took
+    /// it for them: advance the hand, push stacks back to the seats, and arm the next deadline.
+    /// </summary>
+    private void AfterAction(TableState table, HandEngine hand)
+    {
+        hand.TryAdvance();
+
+        // After *every* action, not just at the end of the hand: LeaveAsync cashes out Seat.Stack
+        // (a folded player may leave mid-hand) and RequestRebuyAsync caps top-ups against it, so a
+        // seat stack left frozen at its pre-hand value hands out chips that are still in the pot.
+        table.SyncSeatStacksFromHand();
+
+        if (hand.Result is not null)
+        {
+            // Deliberately leave the finished HandEngine (with its populated Result) in place
+            // rather than clearing it here, so the showdown/pot result is still visible to a
+            // broadcast taken right after this call. TryStartHand replaces it once the next
+            // hand actually begins.
+            table.Status = TableStatus.WaitingForPlayers;
+            table.ActionDeadlineUtc = null;
+            table.NextHandStartUtc = clock.UtcNow + NextHandDelay;
+
+            // Queued rebuys are only effective once the round they were requested during has ended.
+            foreach (var seat in table.Seats.Where(s => !s.IsEmpty && s.PendingRebuyChips > 0))
+            {
+                seat.Stack += seat.PendingRebuyChips;
+                seat.PendingRebuyChips = 0;
+            }
+        }
+        else
+        {
+            table.ActionDeadlineUtc = clock.UtcNow + ActionTimeout;
+        }
+    }
+
+    /// <summary>
+    /// The server-side heartbeat for one table: acts for a player whose clock has run out, and deals the
+    /// next hand once the post-showdown pause is over. Returns true if anything changed and viewers need
+    /// a fresh broadcast. Driven by the API's table ticker, never by a client.
+    /// </summary>
+    public async Task<bool> TickAsync(Guid tableId)
+    {
+        // Unlocked pre-check first: the ticker sweeps every table on every tick and almost none of them
+        // have anything due, so don't pay for a distributed lock just to find that out.
+        var snapshot = await repo.GetAsync(tableId);
+        if (snapshot is null || !IsWorkDue(snapshot, clock.UtcNow))
+        {
+            return false;
+        }
+
+        bool changed = false;
+        await MutateAsync(tableId, table =>
+        {
+            // Re-checked under the lock: the player may have acted between the pre-check and here.
+            int guard = 0;
+            while (IsWorkDue(table, clock.UtcNow) && guard++ <= table.Config.MaxSeats)
+            {
+                if (table.CurrentHand is { Result: null } hand)
+                {
+                    if (hand.CurrentActorId is not { } actorId)
+                    {
+                        break;
+                    }
+
+                    // Check when it is free, otherwise fold. Never commit chips on somebody's behalf.
+                    var legal = hand.GetLegalActions(actorId);
+                    hand.Act(actorId, legal.CanCheck ? BettingActionType.Check : BettingActionType.Fold);
+                    AfterAction(table, hand);
+                }
+                else
+                {
+                    // Cleared before the attempt: if a hand cannot start (everyone left or is sitting
+                    // out) the ticker must go quiet rather than retry every tick forever. Seating a
+                    // player re-arms it via TryStartHandAsync.
+                    table.NextHandStartUtc = null;
+                    TryStartHand(table);
+                }
+
+                changed = true;
+            }
+
+            return Task.CompletedTask;
+        });
+
+        return changed;
+    }
+
+    private static bool IsWorkDue(TableState table, DateTimeOffset now) =>
+        table.CurrentHand is { Result: null }
+            ? table.ActionDeadlineUtc is { } deadline && now >= deadline
+            : table.NextHandStartUtc is { } startAt && now >= startAt;
+
+    /// <summary>
+    /// Called when a player's last connection to the table drops. A seated player keeps their seat and
+    /// their chips and keeps the full clock on any decision already in front of them, but is skipped when
+    /// the next hand is dealt until they come back. A spectator is dropped outright, which also releases
+    /// the one-active-table slot they were holding.
+    /// </summary>
+    public async Task MarkDisconnectedAsync(Guid tableId, string playerId)
+    {
+        bool releasedSlot = false;
+
+        await MutateAsync(tableId, table =>
+        {
+            var seat = table.FindSeat(playerId);
+            if (seat is not null)
+            {
+                seat.IsSittingOut = true;
+                seat.DisconnectedAtUtc = clock.UtcNow;
+            }
+            else
+            {
+                table.Spectators.Remove(playerId);
+                table.Waitlist.RemoveAll(w => w.PlayerId == playerId);
+                releasedSlot = true;
+            }
+
+            return Task.CompletedTask;
+        });
+
+        if (releasedSlot)
+        {
+            await activeTables.ClearActiveTableAsync(playerId);
+        }
+    }
+
+    private bool TryStartHand(TableState table)
     {
         if (!table.CanStartHand)
         {
@@ -225,6 +344,18 @@ public sealed class TableService(
         var players = order.Select(s => new PlayerBetState { PlayerId = s.PlayerId!, Stack = s.Stack }).ToList();
         table.CurrentHand = new HandEngine(players, table.Config.SmallBlind, table.Config.BigBlind);
         table.Status = TableStatus.Playing;
+
+        table.HandSeatIndexByPlayerId.Clear();
+        foreach (var seat in order)
+        {
+            table.HandSeatIndexByPlayerId[seat.PlayerId!] = seat.Index;
+        }
+
+        // The blinds are posted inside the HandEngine constructor, so the seats are already behind.
+        table.SyncSeatStacksFromHand();
+
+        table.NextHandStartUtc = null;
+        table.ActionDeadlineUtc = clock.UtcNow + ActionTimeout;
         return true;
     }
 

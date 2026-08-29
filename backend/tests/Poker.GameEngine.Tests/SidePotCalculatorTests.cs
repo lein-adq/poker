@@ -1,4 +1,4 @@
-using Poker.Domain.Betting;
+﻿using Poker.Domain.Betting;
 using Xunit;
 
 namespace Poker.GameEngine.Tests;
@@ -71,5 +71,47 @@ public class SidePotCalculatorTests
         Assert.Equal(300, pots[1].Amount); // 100 * 3
         Assert.Equal(500, pots[2].Amount); // 250 * 2
         Assert.Equal(["C", "D"], pots[2].EligiblePlayerIds.OrderBy(x => x));
+    }
+
+    [Fact]
+    public void SidePotEveryContestantFoldedOut_HasNoEligiblePlayer_ButKeepsItsContributors()
+    {
+        // A is all-in for 50; B and C build a side pot above them and then both fold. Nobody is left
+        // with a claim to that side pot, so it must still name who put the chips in.
+        var pots = SidePotCalculator.Calculate([
+            new PlayerContribution("A", 50, false),
+            new PlayerContribution("B", 100, true),
+            new PlayerContribution("C", 100, true),
+        ]);
+
+        Assert.Equal(2, pots.Count);
+        Assert.Equal(250, pots.Sum(p => p.Amount));
+
+        var main = pots[0];
+        Assert.Equal(150, main.Amount); // 50 * 3 contributors
+        Assert.Equal("A", Assert.Single(main.EligiblePlayerIds));
+
+        var abandoned = pots[1];
+        Assert.Equal(100, abandoned.Amount); // 50 * 2 contributors
+        Assert.Empty(abandoned.EligiblePlayerIds);
+        Assert.Equal(["B", "C"], abandoned.ContributorPlayerIds.OrderBy(x => x));
+    }
+
+    [Fact]
+    public void AbandonedSidePots_AreNotMergedTogether_SoEachStillCoversOneBettingLevel()
+    {
+        // Two stacked side pots that everyone folded out of must stay separate: merging them would
+        // lose the per-level contributor split needed to hand the chips back exactly.
+        var pots = SidePotCalculator.Calculate([
+            new PlayerContribution("A", 50, false),
+            new PlayerContribution("B", 100, true),
+            new PlayerContribution("C", 300, true),
+        ]);
+
+        Assert.Equal(3, pots.Count);
+        Assert.Equal(450, pots.Sum(p => p.Amount));
+        Assert.Equal(["B", "C"], pots[1].ContributorPlayerIds.OrderBy(x => x));
+        Assert.Equal("C", Assert.Single(pots[2].ContributorPlayerIds));
+        Assert.All(pots.Skip(1), pot => Assert.Empty(pot.EligiblePlayerIds));
     }
 }

@@ -7,57 +7,62 @@ using Poker.Domain.Betting;
 namespace Poker.Api.Hubs;
 
 [Authorize]
-public sealed class TableHub(TableService tableService, IHubContext<LobbyHub> lobbyHub) : Hub
+public sealed class TableHub(
+    TableService tableService,
+    TableBroadcaster broadcaster,
+    TableConnectionRegistry connections,
+    IHubContext<LobbyHub> lobbyHub) : Hub
 {
+    private const string TableIdItemKey = "tableId";
+
     private string UserId => Context.User!.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     private static string GroupName(Guid tableId) => $"table:{tableId}";
 
     public async Task JoinAsSpectator(Guid tableId)
     {
+        // Also the reconnect path: a seated player whose connection dropped rejoins through here, which
+        // clears the sit-out their disconnect set. Clients must re-invoke this after an automatic
+        // reconnect, since group membership belongs to the connection that went away.
         await tableService.JoinAsSpectatorAsync(tableId, UserId);
-        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(tableId));
-        await BroadcastTableState(tableId);
+        await TrackConnectionAsync(tableId);
+        await broadcaster.BroadcastAsync(tableId);
     }
 
     public async Task Sit(Guid tableId, int buyInChips)
     {
         await tableService.SitAsync(tableId, UserId, buyInChips);
-        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(tableId));
+        await TrackConnectionAsync(tableId);
         await tableService.TryStartHandAsync(tableId);
-        await BroadcastTableState(tableId);
+        await broadcaster.BroadcastAsync(tableId);
         await NotifyLobby();
     }
 
     public async Task RequestRebuy(Guid tableId, int additionalChips)
     {
         await tableService.RequestRebuyAsync(tableId, UserId, additionalChips);
-        await BroadcastTableState(tableId);
+        await broadcaster.BroadcastAsync(tableId);
     }
 
     public async Task Leave(Guid tableId)
     {
         await tableService.LeaveAsync(tableId, UserId);
+        connections.Remove(UserId, tableId, Context.ConnectionId);
+        Context.Items.Remove(TableIdItemKey);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(tableId));
-        await BroadcastTableState(tableId);
+        await broadcaster.BroadcastAsync(tableId);
         await NotifyLobby();
     }
 
     public async Task Act(Guid tableId, BettingActionType action, int amount)
     {
         await tableService.ApplyPlayerActionAsync(tableId, UserId, action, amount);
+        await broadcaster.BroadcastAsync(tableId);
 
-        // Broadcast first so a just-finished hand's showdown/pot result is actually seen by clients
-        // before the next hand overwrites it, then give players a moment to read it.
-        await BroadcastTableState(tableId);
-
-        var table = await tableService.GetTableAsync(tableId);
-        if (table is not null && table.CurrentHand is null or { Result: not null })
-        {
-            await Task.Delay(TimeSpan.FromSeconds(3));
-            await tableService.TryStartHandAsync(tableId);
-            await BroadcastTableState(tableId);
-        }
+        // The next hand is dealt by TableTickerService once the post-showdown pause elapses. This method
+        // used to sleep for that pause and then start the hand itself, which made the game clock depend
+        // on the acting client staying connected, and blocked that client's single concurrent
+        // invocation slot (so they could not even chat) for the whole three seconds.
     }
 
     public async Task SendChatMessage(Guid tableId, string message)
@@ -79,28 +84,26 @@ public sealed class TableHub(TableService tableService, IHubContext<LobbyHub> lo
         });
     }
 
-    /// <summary>
-    /// Sends every connected player their own personalized view (their hole cards only, others hidden
-    /// unless showdown/all-in-reveal) rather than one shared group broadcast.
-    /// </summary>
-    private async Task BroadcastTableState(Guid tableId)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var table = await tableService.GetTableAsync(tableId);
-        if (table is null)
+        // Only react once the user's *last* connection for this table has gone: closing one of two tabs,
+        // or a reconnect that supersedes an old connection id, is not a player leaving.
+        if (Context.Items.TryGetValue(TableIdItemKey, out var value) && value is Guid tableId &&
+            connections.Remove(UserId, tableId, Context.ConnectionId))
         {
-            return;
+            await tableService.MarkDisconnectedAsync(tableId, UserId);
+            await broadcaster.BroadcastAsync(tableId);
+            await NotifyLobby();
         }
 
-        var viewers = table.Seats.Select(s => s.PlayerId).Where(id => id is not null)
-            .Concat(table.Spectators)
-            .Distinct()
-            .ToList();
+        await base.OnDisconnectedAsync(exception);
+    }
 
-        foreach (var viewerId in viewers)
-        {
-            var dto = TableStateDto.For(table, viewerId);
-            await Clients.User(viewerId!).SendAsync("TableState", dto);
-        }
+    private async Task TrackConnectionAsync(Guid tableId)
+    {
+        Context.Items[TableIdItemKey] = tableId;
+        connections.Add(UserId, tableId, Context.ConnectionId);
+        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(tableId));
     }
 
     private Task NotifyLobby() =>

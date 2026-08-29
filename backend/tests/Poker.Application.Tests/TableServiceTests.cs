@@ -1,4 +1,4 @@
-using Poker.Application.Tables;
+﻿using Poker.Application.Tables;
 using Poker.Application.Wallet;
 using Poker.Domain.Betting;
 using Xunit;
@@ -7,13 +7,14 @@ namespace Poker.Application.Tests;
 
 public class TableServiceTests
 {
-    private static (TableService svc, InMemoryWalletRepository walletRepo, InMemoryActiveTableTracker tracker) Build()
+    private static (TableService svc, InMemoryWalletRepository walletRepo, InMemoryActiveTableTracker tracker, FixedClock clock) Build()
     {
         var walletRepo = new InMemoryWalletRepository();
-        var wallet = new WalletService(walletRepo, new FixedClock(DateTimeOffset.UtcNow));
+        var clock = new FixedClock(DateTimeOffset.UtcNow);
+        var wallet = new WalletService(walletRepo, clock);
         var tracker = new InMemoryActiveTableTracker();
-        var svc = new TableService(new InMemoryTableRepository(), tracker, new InMemoryDistributedLock(), wallet);
-        return (svc, walletRepo, tracker);
+        var svc = new TableService(new InMemoryTableRepository(), tracker, new InMemoryDistributedLock(), wallet, clock);
+        return (svc, walletRepo, tracker, clock);
     }
 
     private static async Task GrantChips(InMemoryWalletRepository repo, string userId, int amount) =>
@@ -22,7 +23,7 @@ public class TableServiceTests
     [Fact]
     public async Task Sit_DebitsWallet_AndOccupiesSeat()
     {
-        var (svc, walletRepo, _) = Build();
+        var (svc, walletRepo, _, _) = Build();
         await GrantChips(walletRepo, "alice", 1000);
         var config = TestTable.PublicConfig();
         var table = await svc.CreateTableAsync(config);
@@ -37,7 +38,7 @@ public class TableServiceTests
     [Fact]
     public async Task Sit_BuyInOutsideRange_Throws()
     {
-        var (svc, walletRepo, _) = Build();
+        var (svc, walletRepo, _, _) = Build();
         await GrantChips(walletRepo, "alice", 1000);
         var config = TestTable.PublicConfig(minBuyIn: 100, maxBuyIn: 500);
         var table = await svc.CreateTableAsync(config);
@@ -49,7 +50,7 @@ public class TableServiceTests
     [Fact]
     public async Task Sit_InsufficientBalance_Throws()
     {
-        var (svc, walletRepo, _) = Build();
+        var (svc, walletRepo, _, _) = Build();
         await GrantChips(walletRepo, "alice", 50);
         var config = TestTable.PublicConfig();
         await svc.CreateTableAsync(config);
@@ -60,7 +61,7 @@ public class TableServiceTests
     [Fact]
     public async Task OneActiveTablePerAccount_IsEnforced()
     {
-        var (svc, walletRepo, _) = Build();
+        var (svc, walletRepo, _, _) = Build();
         await GrantChips(walletRepo, "alice", 2000);
         var tableA = await svc.CreateTableAsync(TestTable.PublicConfig());
         var tableB = await svc.CreateTableAsync(TestTable.PublicConfig());
@@ -72,7 +73,7 @@ public class TableServiceTests
     [Fact]
     public async Task TableFull_ExtraPlayersAreWaitlisted_AndPromotedWhenASeatOpens()
     {
-        var (svc, walletRepo, _) = Build();
+        var (svc, walletRepo, _, _) = Build();
         var config = TestTable.PublicConfig(maxSeats: 2);
         var table = await svc.CreateTableAsync(config);
 
@@ -101,7 +102,7 @@ public class TableServiceTests
     [Fact]
     public async Task Rebuy_WhileHandInProgress_IsQueuedUntilHandEnds()
     {
-        var (svc, walletRepo, _) = Build();
+        var (svc, walletRepo, _, _) = Build();
         var config = TestTable.PublicConfig();
         await svc.CreateTableAsync(config);
 
@@ -130,7 +131,7 @@ public class TableServiceTests
     [Fact]
     public async Task PrivateTable_UsesIsolatedPlayChips_NotTheRealBag()
     {
-        var (svc, walletRepo, _) = Build();
+        var (svc, walletRepo, _, _) = Build();
         // Deliberately no real-bag chips granted to alice.
         var config = TestTable.PrivatePlayMoneyConfig();
         await svc.CreateTableAsync(config);
@@ -146,7 +147,7 @@ public class TableServiceTests
     [Fact]
     public async Task TwoSeatedPlayers_HandStartsAndPlaysToCompletion()
     {
-        var (svc, walletRepo, _) = Build();
+        var (svc, walletRepo, _, _) = Build();
         var config = TestTable.PublicConfig();
         await svc.CreateTableAsync(config);
         await GrantChips(walletRepo, "alice", 1000);

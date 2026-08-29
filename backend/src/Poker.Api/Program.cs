@@ -1,7 +1,8 @@
-using Microsoft.AspNetCore.Authentication;
+﻿using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Poker.Api.Auth;
+using Poker.Api.Background;
 using Poker.Api.Endpoints;
 using Poker.Api.Hubs;
 using Poker.Api.Iam;
@@ -38,7 +39,13 @@ builder.Services.AddScoped<IUserRepository, EfUserRepository>();
 builder.Services.AddScoped<WalletService>();
 builder.Services.AddScoped<TableService>();
 builder.Services.AddSingleton<EmailDomainAllowList>();
+builder.Services.AddSingleton<TableConnectionRegistry>();
+builder.Services.AddScoped<TableBroadcaster>();
 builder.Services.AddHostedService<DailyGiftHostedService>();
+
+// Drives action timeouts and deals the next hand: the game must advance on the server's clock, not
+// only when some client happens to send a message.
+builder.Services.AddHostedService<TableTickerService>();
 
 // --- Auth: trust identity headers injected by Ory Oathkeeper at the edge ---
 builder.Services
