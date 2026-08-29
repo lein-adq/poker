@@ -22,7 +22,8 @@ Stop with `docker compose down` (add `-v` to also wipe the Postgres/Kratos volum
 
 ```
 cd backend
-dotnet test Poker.slnx        # 37 unit tests: hand evaluator, side pots, betting, equity, tables, wallet
+dotnet test Poker.slnx        # 593 tests: hand evaluator, side pots, betting, equity, tables, wallet,
+                              # plus randomised chip-conservation property tests over whole sessions
 dotnet run --project src/Poker.Api
 ```
 
