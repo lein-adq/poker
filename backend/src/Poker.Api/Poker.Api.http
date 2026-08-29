@@ -1,0 +1,6 @@
+@Poker.Api_HostAddress = http://localhost:5276
+
+GET {{Poker.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
