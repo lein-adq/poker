@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Poker.Api\Poker.Api.csproj" />
+    <!--
+      For the in-memory repository/lock/tracker/wallet fakes in Fakes.cs. Referenced rather than
+      duplicated so both suites drive the same stand-ins; xUnit discovers tests per assembly, so this
+      does not re-run the Application tests here.
+    -->
+    <ProjectReference Include="..\Poker.Application.Tests\Poker.Application.Tests.csproj" />
+  </ItemGroup>
+
+</Project>

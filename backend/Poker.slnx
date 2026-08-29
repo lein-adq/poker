@@ -7,6 +7,7 @@
     <Project Path="src/Poker.Infrastructure/Poker.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Poker.Api.Tests/Poker.Api.Tests.csproj" />
     <Project Path="tests/Poker.Application.Tests/Poker.Application.Tests.csproj" />
     <Project Path="tests/Poker.GameEngine.Tests/Poker.GameEngine.Tests.csproj" />
   </Folder>
