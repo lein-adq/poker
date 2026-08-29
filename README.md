@@ -22,8 +22,9 @@ Stop with `docker compose down` (add `-v` to also wipe the Postgres/Kratos volum
 
 ```
 cd backend
-dotnet test Poker.slnx        # 602 tests: hand evaluator, side pots, betting, equity, tables, wallet,
-                              # plus randomised chip-conservation property tests over whole sessions
+dotnet test Poker.slnx        # 611 tests: hand evaluator, side pots, betting, equity, tables, wallet,
+                              # randomised chip-conservation property tests over whole sessions, and
+                              # SignalR hub-boundary tests (per-viewer privacy, disconnects, the ticker)
 dotnet run --project src/Poker.Api
 ```
 
@@ -36,6 +37,43 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## End-to-end test
+
+Needs the Docker stack running (see above).
+
+```
+cd e2e
+npm install
+npx playwright install chromium
+npm test
+```
+
+Two real browsers register through Kratos (the emailed code is read out of Mailslurper's API, so there
+is no test-only auth bypass in the app), sit at a table, play a hand, and watch the server deal the next
+one. One path on purpose — it exists to catch what the fast suites cannot see: auth, routing, CORS,
+static-file serving and serialization. It found three genuine breakages on its first runs (SPA deep
+links 404ing, duplicated CORS headers blocking every API call, and the API port being published to the
+host — an authentication bypass).
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push to `master`/`main` and every pull request, in two parallel
+jobs. Nothing here needs Postgres or Redis — the backend suite runs against in-memory fakes.
+
+| Job | Checks |
+| --- | --- |
+| Backend | `dotnet build -c Release`, `dotnet test -c Release` (611 tests), plus a non-gating `dotnet list package --vulnerable` audit |
+| Frontend | `npm run lint` (oxlint), `npm run build` (`tsc -b` typecheck + vite bundle) |
+
+`.github/workflows/e2e.yml` runs the Playwright test against a full compose stack **nightly and on
+demand**, not per pull request — standing the stack up costs minutes and would put browser flake on the
+critical path to merging.
+
+The dependency audit reports rather than fails, so a newly published advisory against an existing
+package cannot break unrelated pull requests on the day it lands. It currently reports one finding:
+`Microsoft.OpenApi` 2.0.0 (high, [GHSA-v5pm-xwqc-g5wc](https://github.com/advisories/GHSA-v5pm-xwqc-g5wc)),
+pulled in transitively by `Microsoft.AspNetCore.OpenApi` 10.0.10.
 
 ## What's implemented
 
