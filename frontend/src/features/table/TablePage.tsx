@@ -30,6 +30,13 @@ export default function TablePage() {
     connection.on("TableState", (dto: TableStateDto) => setTable(dto));
     connection.on("ChatMessage", (msg: ChatMessageDto) => setMessages((m) => [...m, msg]));
 
+    // Group membership and the server's connection tracking both belong to the connection that went
+    // away, and automatic reconnect hands out a fresh connection id — so rejoining is not optional.
+    // This is also what clears the sit-out the server applied when the old connection dropped.
+    connection.onreconnected(() => {
+      connection.invoke("JoinAsSpectator", tableId).catch((e) => setError(e.message));
+    });
+
     connection
       .start()
       .then(() => connection.invoke("JoinAsSpectator", tableId))
@@ -40,6 +47,10 @@ export default function TablePage() {
       connection.stop();
     };
   }, [tableId]);
+
+  // Server-authoritative: this only renders the deadline the server already set. A client with a
+  // skewed clock sees a slightly wrong number, never a different outcome.
+  const secondsToAct = useSecondsRemaining(table?.hand?.result ? null : table?.hand?.actionDeadlineUtc);
 
   if (!tableId) return null;
 
@@ -67,7 +78,13 @@ export default function TablePage() {
 
         <div className="seats">
           {table?.seats.map((seat) => (
-            <SeatView key={seat.index} seat={seat} isMe={seat.playerId === myId} isActor={table.hand?.currentActorPlayerId === seat.playerId} />
+            <SeatView
+              key={seat.index}
+              seat={seat}
+              isMe={seat.playerId === myId}
+              isActor={table.hand?.currentActorPlayerId === seat.playerId}
+              secondsToAct={secondsToAct}
+            />
           ))}
         </div>
 
@@ -109,6 +126,9 @@ export default function TablePage() {
 
             {isMyTurn && (
               <div className="betting-actions">
+                {secondsToAct !== null && (
+                  <span className={`action-clock ${secondsToAct <= 5 ? "urgent" : ""}`}>{secondsToAct}s</span>
+                )}
                 <button onClick={() => invoke("Act", tableId, BettingActionType.Fold, 0)}>Fold</button>
                 <button onClick={() => invoke("Act", tableId, BettingActionType.Check, 0)}>Check</button>
                 <button onClick={() => invoke("Act", tableId, BettingActionType.Call, 0)}>Call</button>
@@ -127,17 +147,57 @@ export default function TablePage() {
   );
 }
 
-function SeatView({ seat, isMe, isActor }: { seat: SeatDto; isMe: boolean; isActor: boolean }) {
+/**
+ * Seconds left on the current action clock, or null when nobody is on the clock. Recomputed locally
+ * between broadcasts so the number ticks down smoothly instead of jumping on each server message.
+ */
+function useSecondsRemaining(deadlineUtc: string | null | undefined): number | null {
+  const [remaining, setRemaining] = useState<number | null>(null);
+
+  // oxlint react(set-state-in-effect): the wall clock is exactly the "external system" an effect is
+  // for. Deriving this during render instead would mean calling Date.now() there, which is impure.
+  useEffect(() => {
+    if (!deadlineUtc) {
+      setRemaining(null);
+      return;
+    }
+
+    const deadline = new Date(deadlineUtc).getTime();
+    const update = () => setRemaining(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    update();
+
+    const id = setInterval(update, 250);
+    return () => clearInterval(id);
+  }, [deadlineUtc]);
+
+  return remaining;
+}
+
+function SeatView({
+  seat,
+  isMe,
+  isActor,
+  secondsToAct,
+}: {
+  seat: SeatDto;
+  isMe: boolean;
+  isActor: boolean;
+  secondsToAct: number | null;
+}) {
   if (!seat.playerId) {
     return <div className="seat empty">Seat {seat.index + 1} open</div>;
   }
 
   return (
-    <div className={`seat ${isActor ? "acting" : ""} ${seat.isFolded ? "folded" : ""}`}>
+    <div className={`seat ${isActor ? "acting" : ""} ${seat.isFolded ? "folded" : ""} ${seat.isSittingOut ? "away" : ""}`}>
       <div className="seat-player">
         {seat.playerId.slice(0, 8)} {isMe && "(you)"}
       </div>
       <div className="seat-stack">{seat.stack} chips</div>
+      {isActor && secondsToAct !== null && (
+        <div className={`seat-clock ${secondsToAct <= 5 ? "urgent" : ""}`}>{secondsToAct}s</div>
+      )}
+      {seat.isSittingOut && <span className="badge away">AWAY</span>}
       {seat.isAllIn && <span className="badge">ALL IN</span>}
       <div className="hole-cards">
         {seat.holeCards ? seat.holeCards.map((c, i) => <Card key={i} card={c} />) : isMe ? null : <><CardBack /><CardBack /></>}

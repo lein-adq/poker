@@ -173,3 +173,29 @@ input {
 .chat-user { font-weight: 600; }
 .chat-input { display: flex; gap: 0.5rem; }
 .chat-input input { flex: 1; }
+
+/* --- Action clock --------------------------------------------------------- */
+/* The server acts for a player whose clock runs out, so the countdown has to be visible. */
+
+.action-clock,
+.seat-clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.action-clock.urgent,
+.seat-clock.urgent {
+  background: rgba(220, 38, 38, 0.85);
+  color: #fff;
+}
+
+.seat.away {
+  opacity: 0.55;
+}
+
+.badge.away {
+  background: #6b7280;
+}

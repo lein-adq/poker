@@ -12,6 +12,7 @@ export interface SeatDto {
   isFolded: boolean;
   holeCards: CardDto[] | null;
   revealedHandName: string | null;
+  isSittingOut: boolean;
 }
 
 export interface PotDto {
@@ -24,6 +25,8 @@ export interface HandDto {
   street: "Preflop" | "Flop" | "Turn" | "River" | "Showdown";
   board: CardDto[];
   currentActorPlayerId: string | null;
+  /** When the current actor's clock runs out and the server acts for them. */
+  actionDeadlineUtc: string | null;
   result: PotDto[] | null;
 }
 
