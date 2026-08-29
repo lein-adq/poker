@@ -1,0 +1,71 @@
+name: CI
+
+# Every push to a long-lived branch and every pull request. The two jobs are independent and run in
+# parallel, so a frontend typo does not hide a backend failure (or wait behind it).
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+# A new push to the same branch supersedes the run already in flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          # Matches backend/Dockerfile (mcr.microsoft.com/dotnet/sdk:10.0).
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore backend/Poker.slnx
+
+      - name: Build
+        run: dotnet build backend/Poker.slnx --configuration Release --no-restore
+
+      # The test suite needs no Postgres or Redis: the Application tests run against in-memory fakes
+      # (tests/Poker.Application.Tests/Fakes.cs) and the GameEngine tests are pure. If a future test
+      # needs real infrastructure, add service containers here rather than skipping it.
+      - name: Test
+        run: dotnet test backend/Poker.slnx --configuration Release --no-build
+
+      # Reporting only, deliberately not gating: a newly published advisory against an existing
+      # dependency would otherwise break every unrelated pull request on the day it lands.
+      - name: Audit dependencies
+        continue-on-error: true
+        run: dotnet list backend/Poker.slnx package --vulnerable --include-transitive
+
+  frontend:
+    name: Frontend — lint & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Matches frontend/Dockerfile (node:22-alpine).
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # `npm run build` is `tsc -b && vite build`, so this is the typecheck as well as the bundle.
+      - name: Build
+        run: npm run build
