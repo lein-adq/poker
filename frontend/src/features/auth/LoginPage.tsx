@@ -24,8 +24,21 @@ export default function LoginPage() {
     setError(null);
     try {
       const result = await requestLoginCode(flow, email);
-      setFlow(result.flow);
-      setStep("code");
+      
+      const hasError = 
+        result.flow.ui.messages?.some((m: any) => m.type === "error") ||
+        result.flow.ui.nodes.some((n: any) => n.messages?.some((m: any) => m.type === "error"));
+
+      if (hasError) {
+        setFlow(result.flow);
+        const uiMessage = result.flow.ui.messages?.find((m: any) => m.type === "error")?.text;
+        const nodeMessage = result.flow.ui.nodes.find((n: any) => n.messages?.some((m: any) => m.type === "error"))
+          ?.messages?.find((m: any) => m.type === "error")?.text;
+        setError(uiMessage || nodeMessage || "Login failed. Please check your details.");
+      } else {
+        setFlow(result.flow);
+        setStep("code");
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
