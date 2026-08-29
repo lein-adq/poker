@@ -173,7 +173,7 @@ public class ChipConservationTests
     public async Task RandomisedSession_NeverCreatesOrDestroysChips(int seed)
     {
         var rng = new Random(seed);
-        var (svc, walletRepo, _) = Build();
+        var (svc, walletRepo, clock) = Build();
         var config = TestTable.PublicConfig(maxSeats: 6, minBuyIn: 100, maxBuyIn: 1000);
         await svc.CreateTableAsync(config);
 
@@ -206,10 +206,22 @@ public class ChipConservationTests
             {
                 Assert.True(guard++ < 500, $"hand {handNumber} never terminated (seed {seed})");
 
-                var (action, amount) = ChooseAction(hand, actorId, rng);
-                await svc.ApplyPlayerActionAsync(config.Id, actorId, action, amount);
-                await AssertConserved(
-                    walletRepo, players, table, expected, $"after {actorId} played {action} {amount} in hand {handNumber}");
+                if (rng.Next(10) == 0)
+                {
+                    // Let the action clock run out rather than acting: the table acts for them, and that
+                    // path has to conserve chips exactly like a player-supplied action does.
+                    clock.UtcNow += TableService.ActionTimeout;
+                    await svc.TickAsync(config.Id);
+                    await AssertConserved(
+                        walletRepo, players, table, expected, $"after {actorId}'s clock expired in hand {handNumber}");
+                }
+                else
+                {
+                    var (action, amount) = ChooseAction(hand, actorId, rng);
+                    await svc.ApplyPlayerActionAsync(config.Id, actorId, action, amount);
+                    await AssertConserved(
+                        walletRepo, players, table, expected, $"after {actorId} played {action} {amount} in hand {handNumber}");
+                }
 
                 string churn = await ChurnAsync(svc, config, table, players, rng);
                 if (churn.Length > 0)
@@ -323,6 +335,25 @@ public class ChipConservationTests
                     return "";
                 }
                 return $"after {returner} bought back in";
+            }
+
+            case 3:
+            {
+                var seated = table.Seats.Where(s => !s.IsEmpty).ToList();
+                if (seated.Count == 0)
+                {
+                    return "";
+                }
+
+                var seat = seated[rng.Next(seated.Count)];
+                if (seat.IsSittingOut)
+                {
+                    await svc.JoinAsSpectatorAsync(config.Id, seat.PlayerId!);
+                    return $"after {seat.PlayerId} reconnected";
+                }
+
+                await svc.MarkDisconnectedAsync(config.Id, seat.PlayerId!);
+                return $"after {seat.PlayerId} disconnected";
             }
 
             default:
