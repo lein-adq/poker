@@ -86,7 +86,12 @@ services:
       ConnectionStrings__Postgres: "Host=postgres;Database=poker;Username=poker;Password=poker"
       ConnectionStrings__Redis: "redis:6379"
       Cors__AllowedOrigins__0: "http://localhost:5173"
-    ports: ["8080:8080"]
+    # Deliberately NOT published to the host. OathkeeperAuthenticationHandler trusts X-User-Id and
+    # X-User-Email unconditionally, so reaching the API without going through Oathkeeper is a complete
+    # authentication bypass: `curl -H 'X-User-Id: anyone' http://localhost:8080/api/wallet/` returned
+    # 200 while this port was exposed. Oathkeeper reaches it as http://api:8080 over the compose
+    # network, which needs no published port. Use `docker compose exec api` for direct debugging.
+    expose: ["8080"]
 
   web:
     build:

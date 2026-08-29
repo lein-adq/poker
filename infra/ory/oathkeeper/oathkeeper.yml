@@ -1,12 +1,18 @@
 serve:
   proxy:
     port: 4455
+    # Exactly one layer may answer CORS, and the API owns it (ASP.NET Core's policy, driven by
+    # Cors:AllowedOrigins in appsettings.json). With CORS enabled here as well, every proxied
+    # response carried Access-Control-Allow-Origin twice — which browsers reject outright, making
+    # the entire authenticated API unreachable from the web app while curl saw nothing wrong.
+    #
+    # Preflights are therefore forwarded to the API untouched by the poker-cors-preflight access
+    # rule, which is why that rule exists at all.
+    #
+    # Known trade-off: Oathkeeper's own error responses (an expired-session 401, say) carry no CORS
+    # headers, so the browser reports those as an opaque network error rather than a clean 401.
     cors:
-      enabled: true
-      allowed_origins:
-        - http://localhost:5173
-      allowed_methods: [GET, POST, PUT, PATCH, DELETE]
-      allow_credentials: true
+      enabled: false
   api:
     port: 4456
 
@@ -20,6 +26,8 @@ errors:
     - json
 
 authenticators:
+  noop:
+    enabled: true
   cookie_session:
     enabled: true
     config:
@@ -34,7 +42,11 @@ authorizers:
   allow:
     enabled: true
 
+# Used only by the CORS preflight rule: a preflight carries no cookies, so it must skip both session
+# checking and identity-header injection, or it would 401 before the API could answer it.
 mutators:
+  noop:
+    enabled: true
   header:
     enabled: true
     config:

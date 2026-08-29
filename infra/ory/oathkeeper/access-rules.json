@@ -1,24 +1,82 @@
 [
   {
+    "id": "poker-cors-preflight",
+    "match": {
+      "url": "http://localhost:4455/<{api,hubs}>/<**>",
+      "methods": [
+        "OPTIONS"
+      ]
+    },
+    "authenticators": [
+      {
+        "handler": "noop"
+      }
+    ],
+    "authorizer": {
+      "handler": "allow"
+    },
+    "mutators": [
+      {
+        "handler": "noop"
+      }
+    ],
+    "upstream": {
+      "url": "http://api:8080"
+    }
+  },
+  {
     "id": "poker-api-authenticated",
     "match": {
       "url": "http://localhost:4455/api/<**>",
-      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+      "methods": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE"
+      ]
     },
-    "authenticators": [{ "handler": "cookie_session" }],
-    "authorizer": { "handler": "allow" },
-    "mutators": [{ "handler": "header" }],
-    "upstream": { "url": "http://api:8080" }
+    "authenticators": [
+      {
+        "handler": "cookie_session"
+      }
+    ],
+    "authorizer": {
+      "handler": "allow"
+    },
+    "mutators": [
+      {
+        "handler": "header"
+      }
+    ],
+    "upstream": {
+      "url": "http://api:8080"
+    }
   },
   {
     "id": "poker-hubs-authenticated",
     "match": {
       "url": "http://localhost:4455/hubs/<**>",
-      "methods": ["GET", "POST"]
+      "methods": [
+        "GET",
+        "POST"
+      ]
     },
-    "authenticators": [{ "handler": "cookie_session" }],
-    "authorizer": { "handler": "allow" },
-    "mutators": [{ "handler": "header" }],
-    "upstream": { "url": "http://api:8080" }
+    "authenticators": [
+      {
+        "handler": "cookie_session"
+      }
+    ],
+    "authorizer": {
+      "handler": "allow"
+    },
+    "mutators": [
+      {
+        "handler": "header"
+      }
+    ],
+    "upstream": {
+      "url": "http://api:8080"
+    }
   }
 ]
