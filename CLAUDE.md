@@ -106,7 +106,7 @@ bonus). Both routes are unauthenticated by design — reachable only from Kratos
 
 ### Real-time model
 
-`TableHub` never does a single shared broadcast to a table group — `BroadcastTableState` builds a
+Nothing ever does a single shared broadcast to a table group — `Hubs/TableBroadcaster` builds a
 **per-viewer** `TableStateDto` (`Hubs/TableStateDto.cs`) so hole cards stay private: a seated player
 only sees their own cards; everyone's cards become visible once revealed (showdown, or earlier if all
 remaining players are all-in, matching PRD's early-reveal rule). Any change to what a `TableStateDto`
@@ -114,8 +114,22 @@ exposes needs to be re-checked against this privacy rule, not just "does the UI 
 
 After a hand result is produced, `TableService.ApplyPlayerActionAsync` deliberately leaves the finished
 `HandEngine` in place (with `Result` populated) rather than clearing it, so the showdown/pot breakdown
-is still visible in the state broadcast right after the action that ended the hand; `TableHub.Act` then
-sleeps 3s before calling `TryStartHandAsync` for the next hand, so clients have time to render it.
+is still visible in the state broadcast right after the action that ended the hand.
+
+**The game advances on a server-side clock, not on client messages.** `Background/TableTickerService`
+sweeps every table twice a second and calls `TableService.TickAsync`, which (a) acts for a player whose
+`TableState.ActionDeadlineUtc` has passed — checking when it is free, folding when facing a bet — and
+(b) deals the next hand once `TableState.NextHandStartUtc` (the post-showdown pause) elapses. Both hub
+actions and the ticker fan out through the same `Hubs/TableBroadcaster`, so a client cannot tell which
+one moved the game. Do not reintroduce client-driven progression: `TableHub.Act` used to sleep 3s and
+start the next hand itself, which made the table's clock depend on the acting client staying connected.
+
+`TableHub.OnDisconnectedAsync` marks a player disconnected only when their *last* connection for that
+table drops (`Hubs/TableConnectionRegistry` — multiple tabs, and reconnects issuing fresh connection
+ids, both mean "a connection dropped" is not "the player left"). A disconnected player keeps their seat,
+chips and the full clock on a decision already in front of them, but is skipped when the next hand is
+dealt until they rejoin; the client must re-invoke `JoinAsSpectator` on SignalR reconnect, which is both
+the group re-join and the sit-out clear.
 
 ### Frontend
 

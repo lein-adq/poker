@@ -86,8 +86,8 @@ The existing bullet is a question mark with no answer. Needs a full pass:
 
 These aren't in the spec at all, and none of them are optional for a real-time poker product:
 
-- **Disconnect handling.** Someone loses connection mid-hand holding the action — auto-fold? Auto-check where legal, else fold? Needs a defined sit-out/reconnect flow.
-- **Per-player action timer / timebank.** Without one, a single AFK player freezes the entire table indefinitely.
+- ~~**Disconnect handling.**~~ **RESOLVED (implemented).** A player is treated as gone only when their last connection for that table drops (multiple tabs and reconnects both issue separate connection ids). They keep their seat, chips and the full clock on any decision already in front of them — a network blip must not cost a live hand — but are skipped when the next hand is dealt until they rejoin. Disconnected spectators are dropped outright, which also releases their one-active-table slot. No timebank.
+- ~~**Per-player action timer / timebank.**~~ **RESOLVED (implemented).** 30 seconds per decision, enforced server-side by `TableTickerService`: on expiry the table checks if checking is free, otherwise folds. It never commits chips on a player's behalf. Still open: whether to add a timebank, and whether a repeatedly-timing-out player should be auto-sat-out rather than burning 30s every hand.
 - **Rake.** Presumably zero for play money — but state it explicitly, since it affects pot math and any future monetization path.
 - **Server crash/restart recovery.** If the server dies mid-hand, does table state persist? Are chips restored, or is the hand voided?
 - **Hand history / audit log.** Needed both for expected functionality and to resolve any fairness disputes about shuffle integrity.
@@ -105,7 +105,7 @@ These aren't in the spec at all, and none of them are optional for a real-time p
 7. Muck rights: in or out of v1
 8. Spectator hole-card visibility: yes/no
 9. Private table ownership/permissions model and creation cap
-10. Disconnect and action-timer behavior
+10. ~~Disconnect and action-timer behavior~~ — decided and implemented, see §8
 11. Age-gating stance
 
 Everything else in this document has a recommended default that can ship as-is unless you want to override it.
