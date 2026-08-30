@@ -28,6 +28,16 @@
         src: ../infra/ory/
         dest: "{{ app_dir }}/ory/"
 
+    - name: Create traefik config directory
+      file:
+        path: "{{ app_dir }}/traefik"
+        state: directory
+
+    - name: Copy traefik dynamic config
+      copy:
+        src: ../infra/traefik/traefik-dynamic.yml
+        dest: "{{ app_dir }}/traefik/traefik-dynamic.yml"
+
     - name: Copy prod docker-compose
       copy:
         src: docker-compose.prod.yml

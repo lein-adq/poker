@@ -3,9 +3,11 @@ services:
   traefik:
     image: traefik:v2.10
     command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.filename=/etc/traefik/traefik-dynamic.yml"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
       - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL}"
@@ -14,7 +16,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./traefik/traefik-dynamic.yml:/etc/traefik/traefik-dynamic.yml:ro"
       - "letsencrypt:/letsencrypt"
 
   postgres:
@@ -80,12 +82,7 @@ services:
     volumes:
       - ./ory/oathkeeper:/etc/config/oathkeeper
     command: serve -c /etc/config/oathkeeper/oathkeeper.yml
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.oathkeeper.rule=Host(`api.boliviano.games`)"
-      - "traefik.http.routers.oathkeeper.entrypoints=websecure"
-      - "traefik.http.routers.oathkeeper.tls.certresolver=myresolver"
-      - "traefik.http.services.oathkeeper.loadbalancer.server.port=4455"
+
 
   api:
     image: ${DOCKERHUB_USERNAME}/boliviano-api:latest

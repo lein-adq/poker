@@ -1,0 +1,15 @@
+http:
+  routers:
+    oathkeeper:
+      rule: "Host(`api.boliviano.games`)"
+      entryPoints:
+        - websecure
+      service: oathkeeper
+      tls:
+        certResolver: myresolver
+
+  services:
+    oathkeeper:
+      loadBalancer:
+        servers:
+          - url: "http://oathkeeper:4455"
