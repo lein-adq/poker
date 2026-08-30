@@ -2,7 +2,7 @@
   {
     "id": "poker-cors-preflight",
     "match": {
-      "url": "<http|https>://<**>/<{"api","hubs"}>/<**>",
+      "url": "<http|https>://<**>/<{api,hubs}>/<**>",
       "methods": [
         "OPTIONS"
       ]
@@ -89,7 +89,8 @@
     "authorizer": {"handler": "allow"},
     "mutators": [{"handler": "noop"}],
     "upstream": {
-      "url": "http://kratos:4433"
+      "url": "http://kratos:4433",
+      "strip_path": "/kratos"
     }
   }
 ]
