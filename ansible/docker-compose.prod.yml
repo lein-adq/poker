@@ -76,6 +76,18 @@ services:
       - ./ory/kratos:/etc/config/kratos
     command: serve -c /etc/config/kratos/kratos.yml
 
+  kratos-courier:
+    image: oryd/kratos:v1.3.1
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    environment:
+      DSN: postgres://kratos:${KRATOS_DB_PASSWORD}@kratos-db:5432/kratos?sslmode=disable
+      COURIER_SMTP_CONNECTION_URI: ${COURIER_SMTP_CONNECTION_URI}
+    volumes:
+      - ./ory/kratos:/etc/config/kratos
+    command: courier watch --config /etc/config/kratos/kratos.yml
+
   oathkeeper:
     image: oryd/oathkeeper:v0.40
     depends_on: [kratos]
