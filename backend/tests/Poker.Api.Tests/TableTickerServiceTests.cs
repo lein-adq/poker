@@ -42,6 +42,7 @@ public class TableTickerServiceTests
         services.AddScoped<WalletService>();
         services.AddScoped<TableService>();
         services.AddSingleton<IHubContext<TableHub>>(new RecordingHubContext<TableHub>(clients));
+        services.AddSingleton<IUserRepository>(new DummyUserRepository());
         services.AddScoped<TableBroadcaster>();
 
         // Mirrors Program.cs's lifetimes. ValidateScopes catches a scoped service captured by a
@@ -97,5 +98,12 @@ public class TableTickerServiceTests
         Assert.Null(table.CurrentHand!.Result);
         Assert.NotEmpty(clients.To("alice"));
         Assert.NotEmpty(clients.To("bob"));
+    }
+
+    private sealed class DummyUserRepository : IUserRepository
+    {
+        public Task<UserSummary?> GetAsync(string userId) => Task.FromResult<UserSummary?>(new UserSummary(userId, "foo@bar", "UTC", userId));
+        public Task<IReadOnlyList<UserSummary>> ListAllAsync() => Task.FromResult<IReadOnlyList<UserSummary>>([]);
+        public Task UpsertAsync(UserSummary user) => Task.CompletedTask;
     }
 }

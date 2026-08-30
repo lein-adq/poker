@@ -137,7 +137,7 @@ public class ActionClockTests
     }
 
     [Fact]
-    public async Task Disconnect_SitsThePlayerOutOfTheNextHand_ButLeavesTheirLiveHandAlone()
+    public async Task Disconnect_KicksThePlayerAtTheEndOfTheHand_ButLeavesTheirLiveHandAlone()
     {
         var (svc, table, config, _, _, clock) = await SeatedTable();
 
@@ -159,10 +159,9 @@ public class ActionClockTests
         clock.UtcNow += TableService.NextHandDelay;
         Assert.True(await svc.TickAsync(config.Id));
 
-        // Dealt in for the next hand: alice and carol only.
-        Assert.NotNull(table.FindSeat("bob"));
-        Assert.DoesNotContain(table.CurrentHand!.Players, p => p.PlayerId == "bob");
-        Assert.Equal(2, table.CurrentHand.Players.Count);
+        // Kicked from the table before the next hand starts.
+        Assert.Null(table.FindSeat("bob"));
+        Assert.Contains("bob", table.Spectators);
     }
 
     [Fact]

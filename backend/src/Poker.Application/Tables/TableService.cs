@@ -195,6 +195,9 @@ public sealed class TableService(
         bool started = false;
         await MutateAsync(tableId, async table =>
         {
+            // Explicitly requested starts bypass the delay
+            table.NextHandStartUtc = null;
+
             var toBoot = table.Seats
                 .Where(s => !s.IsEmpty && (s.IsSittingOut || (s.Stack == 0 && s.PendingRebuyChips == 0)))
                 .Select(s => s.PlayerId!)
