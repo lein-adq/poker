@@ -90,7 +90,7 @@ services:
       - "traefik.http.services.oathkeeper.loadbalancer.server.port=4455"
 
   api:
-    image: ${DOCKERHUB_USERNAME}/poker-api:latest
+    image: ${DOCKERHUB_USERNAME}/boliviano-api:latest
     depends_on:
       postgres:
         condition: service_healthy
