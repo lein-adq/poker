@@ -66,12 +66,12 @@ services:
       DSN: postgres://kratos:${KRATOS_DB_PASSWORD}@kratos-db:5432/kratos?sslmode=disable
       COURIER_SMTP_CONNECTION_URI: ${COURIER_SMTP_CONNECTION_URI}
       SERVE_PUBLIC_BASE_URL: https://api.boliviano.games/kratos/
-      SERVE_PUBLIC_CORS_ALLOWED_ORIGINS: "[\"https://boliviano.games\"]"
-      SELFSERVICE_DEFAULT_BROWSER_RETURN_URL: https://boliviano.games/
-      SELFSERVICE_ALLOWED_RETURN_URLS: "[\"https://boliviano.games\"]"
-      SELFSERVICE_FLOWS_REGISTRATION_UI_URL: https://boliviano.games/auth/register
-      SELFSERVICE_FLOWS_LOGIN_UI_URL: https://boliviano.games/auth/login
-      SELFSERVICE_FLOWS_SETTINGS_UI_URL: https://boliviano.games/account/settings
+      SERVE_PUBLIC_CORS_ALLOWED_ORIGINS_0: "https://boliviano.games"
+      SELFSERVICE_DEFAULT_BROWSER_RETURN_URL: "https://boliviano.games/"
+      SELFSERVICE_ALLOWED_RETURN_URLS_0: "https://boliviano.games"
+      SELFSERVICE_FLOWS_REGISTRATION_UI_URL: "https://boliviano.games/auth/register"
+      SELFSERVICE_FLOWS_LOGIN_UI_URL: "https://boliviano.games/auth/login"
+      SELFSERVICE_FLOWS_SETTINGS_UI_URL: "https://boliviano.games/account/settings"
     volumes:
       - ./ory/kratos:/etc/config/kratos
     command: serve -c /etc/config/kratos/kratos.yml
