@@ -159,9 +159,9 @@ public class ActionClockTests
         clock.UtcNow += TableService.NextHandDelay;
         Assert.True(await svc.TickAsync(config.Id));
 
-        // Kicked from the table before the next hand starts.
+        // Kicked from the table entirely before the next hand starts.
         Assert.Null(table.FindSeat("bob"));
-        Assert.Contains("bob", table.Spectators);
+        Assert.DoesNotContain("bob", table.Spectators);
     }
 
     [Fact]
