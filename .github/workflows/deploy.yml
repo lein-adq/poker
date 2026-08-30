@@ -32,6 +32,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Enable IPv6 via Cloudflare WARP
+        uses: fscarmen/warp-on-actions@v1.4
+        with:
+          stack: ipv6
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
