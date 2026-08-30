@@ -9,7 +9,8 @@ serve:
       enabled: true
       allowed_origins:
         - http://localhost:5173
-      allowed_methods: [GET, POST, PUT, PATCH, DELETE]
+        - https://boliviano.games
+      allowed_methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
       allow_credentials: true
   admin:
     base_url: http://kratos:4434/
@@ -18,6 +19,7 @@ selfservice:
   default_browser_return_url: http://localhost:5173/
   allowed_return_urls:
     - http://localhost:5173
+    - https://boliviano.games
 
   methods:
     password:
