@@ -1,88 +1,8 @@
 [
   {
-    "id": "poker-cors-preflight",
-    "match": {
-      "url": "<http|https>://<**>/<{api,hubs}>/<**>",
-      "methods": [
-        "OPTIONS"
-      ]
-    },
-    "authenticators": [
-      {
-        "handler": "noop"
-      }
-    ],
-    "authorizer": {
-      "handler": "allow"
-    },
-    "mutators": [
-      {
-        "handler": "noop"
-      }
-    ],
-    "upstream": {
-      "url": "http://api:8080"
-    }
-  },
-  {
-    "id": "poker-api-authenticated",
-    "match": {
-      "url": "<http|https>://<**>/api/<**>",
-      "methods": [
-        "GET",
-        "POST",
-        "PUT",
-        "PATCH",
-        "DELETE"
-      ]
-    },
-    "authenticators": [
-      {
-        "handler": "cookie_session"
-      }
-    ],
-    "authorizer": {
-      "handler": "allow"
-    },
-    "mutators": [
-      {
-        "handler": "header"
-      }
-    ],
-    "upstream": {
-      "url": "http://api:8080"
-    }
-  },
-  {
-    "id": "poker-hubs-authenticated",
-    "match": {
-      "url": "<http|https>://<**>/hubs/<**>",
-      "methods": [
-        "GET",
-        "POST"
-      ]
-    },
-    "authenticators": [
-      {
-        "handler": "cookie_session"
-      }
-    ],
-    "authorizer": {
-      "handler": "allow"
-    },
-    "mutators": [
-      {
-        "handler": "header"
-      }
-    ],
-    "upstream": {
-      "url": "http://api:8080"
-    }
-  },
-  {
     "id": "poker-kratos",
     "match": {
-      "url": "<http|https>://<**>/kratos/<**>",
+      "url": "http://api.boliviano.games/kratos/<**>",
       "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     },
     "authenticators": [{"handler": "noop"}],
@@ -91,6 +11,45 @@
     "upstream": {
       "url": "http://kratos:4433",
       "strip_path": "/kratos"
+    }
+  },
+  {
+    "id": "poker-cors-preflight",
+    "match": {
+      "url": "http://api.boliviano.games/<{api,hubs}>/<**>",
+      "methods": ["OPTIONS"]
+    },
+    "authenticators": [{"handler": "noop"}],
+    "authorizer": {"handler": "allow"},
+    "mutators": [{"handler": "noop"}],
+    "upstream": {
+      "url": "http://api:8080"
+    }
+  },
+  {
+    "id": "poker-api-authenticated",
+    "match": {
+      "url": "http://api.boliviano.games/api/<**>",
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    },
+    "authenticators": [{"handler": "cookie_session"}],
+    "authorizer": {"handler": "allow"},
+    "mutators": [{"handler": "header"}],
+    "upstream": {
+      "url": "http://api:8080"
+    }
+  },
+  {
+    "id": "poker-hubs-authenticated",
+    "match": {
+      "url": "http://api.boliviano.games/hubs/<**>",
+      "methods": ["GET", "POST"]
+    },
+    "authenticators": [{"handler": "cookie_session"}],
+    "authorizer": {"handler": "allow"},
+    "mutators": [{"handler": "header"}],
+    "upstream": {
+      "url": "http://api:8080"
     }
   }
 ]
