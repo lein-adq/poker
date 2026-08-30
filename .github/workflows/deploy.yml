@@ -24,6 +24,7 @@ jobs:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
+          provenance: false
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/boliviano-api:latest
 
   deploy:
