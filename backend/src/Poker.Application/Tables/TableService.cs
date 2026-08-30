@@ -99,10 +99,7 @@ public sealed class TableService(
             seat.PlayerId = playerId;
             seat.Stack = buyInChips;
 
-            if (table.Status == TableStatus.WaitingForPlayers && table.CanStartHand)
-            {
-                table.NextHandStartUtc ??= clock.UtcNow + TimeSpan.FromSeconds(5);
-            }
+
         });
     }
 
@@ -158,6 +155,8 @@ public sealed class TableService(
             seat.PlayerId = null;
             seat.Stack = 0;
             seat.PendingRebuyChips = 0;
+            seat.IsSittingOut = false;
+            seat.DisconnectedAtUtc = null;
 
             table.HandSeatIndexByPlayerId.Remove(playerId);
 
