@@ -133,10 +133,19 @@ public sealed class TableService(
 
     public async Task LeaveAsync(Guid tableId, string playerId)
     {
-        await MutateAsync(tableId, async table =>
+        try
         {
-            await LeaveCoreAsync(table, playerId);
-        });
+            await MutateAsync(tableId, async table =>
+            {
+                await LeaveCoreAsync(table, playerId);
+            });
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "Table not found.")
+        {
+            // The table has already been deleted because it was empty.
+            // Leaving it is a no-op.
+            await activeTables.ClearActiveTableAsync(playerId);
+        }
     }
 
     private async Task LeaveCoreAsync(TableState table, string playerId)
