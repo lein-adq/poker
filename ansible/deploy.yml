@@ -52,6 +52,10 @@
       shell: docker ps -aq --filter label=com.docker.compose.project=poker | xargs -r docker rm -f
       ignore_errors: yes
 
+    - name: Wipe letsencrypt volume to force fresh SSL cert (in case of Cloudflare cache)
+      shell: docker volume rm poker_letsencrypt
+      ignore_errors: yes
+
     - name: Start services
       command: docker-compose up -d --remove-orphans
       args:
