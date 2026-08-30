@@ -2,7 +2,7 @@
   {
     "id": "poker-kratos",
     "match": {
-      "url": "http://api.boliviano.games/kratos/<**>",
+      "url": "<*>://api.boliviano.games/kratos/<**>",
       "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     },
     "authenticators": [{"handler": "noop"}],
@@ -16,7 +16,7 @@
   {
     "id": "poker-cors-preflight",
     "match": {
-      "url": "http://api.boliviano.games/<{api,hubs}>/<**>",
+      "url": "<*>://api.boliviano.games/<{api,hubs}>/<**>",
       "methods": ["OPTIONS"]
     },
     "authenticators": [{"handler": "noop"}],
@@ -29,7 +29,7 @@
   {
     "id": "poker-api-authenticated",
     "match": {
-      "url": "http://api.boliviano.games/api/<**>",
+      "url": "<*>://api.boliviano.games/api/<**>",
       "methods": ["GET", "POST", "PUT", "PATCH", "DELETE"]
     },
     "authenticators": [{"handler": "cookie_session"}],
@@ -42,7 +42,7 @@
   {
     "id": "poker-hubs-authenticated",
     "match": {
-      "url": "http://api.boliviano.games/hubs/<**>",
+      "url": "<*>://api.boliviano.games/hubs/<**>",
       "methods": ["GET", "POST"]
     },
     "authenticators": [{"handler": "cookie_session"}],
