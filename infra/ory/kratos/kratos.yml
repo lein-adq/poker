@@ -4,7 +4,7 @@ dsn: postgres://kratos:kratos@kratos-db:5432/kratos?sslmode=disable&max_conns=20
 
 serve:
   public:
-    base_url: http://localhost:4433/
+    base_url: http://localhost:4433/kratos/
     cors:
       enabled: true
       allowed_origins:
