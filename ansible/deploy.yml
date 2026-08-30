@@ -48,6 +48,10 @@
       args:
         chdir: "{{ app_dir }}"
 
+    - name: Clean up broken api container manually (docker-compose v1 bug)
+      shell: docker ps -aq --filter label=com.docker.compose.service=api | xargs -r docker rm -f
+      ignore_errors: yes
+
     - name: Start services
       command: docker-compose up -d --remove-orphans
       args:
