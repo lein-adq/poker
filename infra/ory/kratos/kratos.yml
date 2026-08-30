@@ -91,6 +91,6 @@ identity:
     - id: player
       url: file:///etc/config/kratos/identity.schema.json
 
+# SMTP configuration is now injected via the COURIER_SMTP_CONNECTION_URI environment variable in docker-compose.yml
 courier:
-  smtp:
-    connection_uri: smtps://mailslurper:1025/?skip_ssl_verify=true
+  template_override_path: /etc/config/kratos/templates

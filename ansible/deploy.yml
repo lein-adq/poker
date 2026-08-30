@@ -1,0 +1,54 @@
+- name: Deploy API to VPS
+  hosts: vps
+  become: yes
+  vars:
+    app_dir: /opt/poker
+  tasks:
+    - name: Ensure dependencies are installed
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+          - rsync
+        state: present
+        update_cache: yes
+
+    - name: Ensure app directory exists
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+
+    - name: Create ory config directory
+      file:
+        path: "{{ app_dir }}/ory"
+        state: directory
+
+    - name: Copy ory config
+      synchronize:
+        src: ../infra/ory/
+        dest: "{{ app_dir }}/ory/"
+
+    - name: Copy prod docker-compose
+      copy:
+        src: docker-compose.prod.yml
+        dest: "{{ app_dir }}/docker-compose.yml"
+
+    - name: Create .env file for Docker Compose
+      copy:
+        dest: "{{ app_dir }}/.env"
+        content: |
+          DB_PASSWORD={{ db_password }}
+          KRATOS_DB_PASSWORD={{ kratos_db_password }}
+          DOCKERHUB_USERNAME={{ dockerhub_user }}
+          ACME_EMAIL={{ acme_email }}
+          COURIER_SMTP_CONNECTION_URI={{ courier_smtp_connection_uri }}
+
+    - name: Pull latest images
+      command: docker-compose pull
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Start services
+      command: docker-compose up -d --remove-orphans
+      args:
+        chdir: "{{ app_dir }}"

@@ -7,6 +7,7 @@ public sealed class UserEntity
 {
     public required string UserId { get; init; }
     public required string Email { get; init; }
+    public string DisplayName { get; set; } = string.Empty;
     public required string TimeZoneId { get; set; }
     public DateTimeOffset CreatedAtUtc { get; init; }
 }

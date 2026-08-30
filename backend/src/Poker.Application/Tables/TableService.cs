@@ -1,4 +1,4 @@
-﻿using Poker.Application.Abstractions;
+using Poker.Application.Abstractions;
 using Poker.Application.Wallet;
 using Poker.Domain.Betting;
 using Poker.GameEngine.Hands;
@@ -58,7 +58,7 @@ public sealed class TableService(
         });
     }
 
-    public async Task SitAsync(Guid tableId, string playerId, int buyInChips)
+    public async Task SitAsync(Guid tableId, string playerId, int buyInChips, int? seatIndex = null)
     {
         await MutateAsync(tableId, async table =>
         {
@@ -80,9 +80,14 @@ public sealed class TableService(
 
             table.Spectators.Remove(playerId);
 
-            var seat = table.FirstOpenSeat();
-            if (seat is null)
+            var seat = seatIndex.HasValue ? table.Seats.ElementAtOrDefault(seatIndex.Value) : table.FirstOpenSeat();
+            if (seat is null || !seat.IsEmpty)
             {
+                if (seatIndex.HasValue) 
+                {
+                    throw new InvalidOperationException("That seat is already taken.");
+                }
+                
                 if (table.Waitlist.All(w => w.PlayerId != playerId))
                 {
                     table.Waitlist.Add(new WaitlistEntry(playerId, buyInChips));
@@ -93,6 +98,11 @@ public sealed class TableService(
             await DebitBuyInAsync(table, playerId, buyInChips);
             seat.PlayerId = playerId;
             seat.Stack = buyInChips;
+
+            if (table.Status == TableStatus.WaitingForPlayers && table.CanStartHand)
+            {
+                table.NextHandStartUtc ??= clock.UtcNow + TimeSpan.FromSeconds(5);
+            }
         });
     }
 
@@ -128,57 +138,66 @@ public sealed class TableService(
     {
         await MutateAsync(tableId, async table =>
         {
-            var seat = table.FindSeat(playerId);
-            if (seat is not null)
+            await LeaveCoreAsync(table, playerId);
+        });
+    }
+
+    private async Task LeaveCoreAsync(TableState table, string playerId)
+    {
+        var seat = table.FindSeat(playerId);
+        if (seat is not null)
+        {
+            bool inHand = table.CurrentHand is { Result: null } hand &&
+                          hand.Players.Any(p => p.PlayerId == playerId && !p.IsFolded);
+            if (inHand)
             {
-                bool inHand = table.CurrentHand is { Result: null } hand &&
-                              hand.Players.Any(p => p.PlayerId == playerId && !p.IsFolded);
-                if (inHand)
-                {
-                    throw new InvalidOperationException("Fold before leaving a hand you're still in.");
-                }
+                throw new InvalidOperationException("Fold before leaving a hand you're still in.");
+            }
 
-                // Pending rebuy chips were already debited from the wallet when the top-up was
-                // requested, so they must be cashed out too rather than silently zeroed.
-                int cashOut = seat.Stack + seat.PendingRebuyChips;
-                seat.PlayerId = null;
-                seat.Stack = 0;
-                seat.PendingRebuyChips = 0;
+            int cashOut = seat.Stack + seat.PendingRebuyChips;
+            seat.PlayerId = null;
+            seat.Stack = 0;
+            seat.PendingRebuyChips = 0;
 
-                // Drop them from the live hand's seat map: they may buy back in during this same hand
-                // and land in the very seat they just vacated, and their now-stale in-hand stack must
-                // not be written over that fresh buy-in.
-                table.HandSeatIndexByPlayerId.Remove(playerId);
+            table.HandSeatIndexByPlayerId.Remove(playerId);
 
-                if (table.Config.IsPrivate && !table.Config.UseRealBankroll)
-                {
-                    await wallet.CreditPrivateTableCashOutAsync(playerId, cashOut, tableId);
-                }
-                else
-                {
-                    await wallet.CreditCashOutAsync(playerId, cashOut, tableId);
-                }
-
-                await PromoteFromWaitlistAsync(table);
+            if (table.Config.IsPrivate && !table.Config.UseRealBankroll)
+            {
+                await wallet.CreditPrivateTableCashOutAsync(playerId, cashOut, table.Config.Id);
             }
             else
             {
-                table.Spectators.Remove(playerId);
-                table.Waitlist.RemoveAll(w => w.PlayerId == playerId);
+                await wallet.CreditCashOutAsync(playerId, cashOut, table.Config.Id);
             }
 
-            await activeTables.ClearActiveTableAsync(playerId);
-        });
+            await PromoteFromWaitlistAsync(table);
+        }
+        else
+        {
+            table.Spectators.Remove(playerId);
+            table.Waitlist.RemoveAll(w => w.PlayerId == playerId);
+        }
+
+        await activeTables.ClearActiveTableAsync(playerId);
     }
 
     /// <summary>Starts a new hand if enough seated players have chips and no hand is currently running.</summary>
     public async Task<bool> TryStartHandAsync(Guid tableId)
     {
         bool started = false;
-        await MutateAsync(tableId, table =>
+        await MutateAsync(tableId, async table =>
         {
+            var toBoot = table.Seats
+                .Where(s => !s.IsEmpty && (s.IsSittingOut || (s.Stack == 0 && s.PendingRebuyChips == 0)))
+                .Select(s => s.PlayerId!)
+                .ToList();
+
+            foreach (var p in toBoot)
+            {
+                await LeaveCoreAsync(table, p);
+            }
+
             started = TryStartHand(table);
-            return Task.CompletedTask;
         });
         return started;
     }
@@ -246,7 +265,7 @@ public sealed class TableService(
         }
 
         bool changed = false;
-        await MutateAsync(tableId, table =>
+        await MutateAsync(tableId, async table =>
         {
             // Re-checked under the lock: the player may have acted between the pre-check and here.
             int guard = 0;
@@ -266,17 +285,30 @@ public sealed class TableService(
                 }
                 else
                 {
-                    // Cleared before the attempt: if a hand cannot start (everyone left or is sitting
-                    // out) the ticker must go quiet rather than retry every tick forever. Seating a
-                    // player re-arms it via TryStartHandAsync.
                     table.NextHandStartUtc = null;
+                    
+                    var toBoot = table.Seats
+                        .Where(s => !s.IsEmpty && (s.IsSittingOut || (s.Stack == 0 && s.PendingRebuyChips == 0)))
+                        .ToList();
+
+                    foreach (var seat in toBoot)
+                    {
+                        string pid = seat.PlayerId!;
+                        bool isAway = seat.IsSittingOut;
+                        
+                        await LeaveCoreAsync(table, pid);
+                        
+                        if (!isAway)
+                        {
+                            table.Spectators.Add(pid);
+                        }
+                    }
+
                     TryStartHand(table);
                 }
 
                 changed = true;
             }
-
-            return Task.CompletedTask;
         });
 
         return changed;
@@ -323,8 +355,15 @@ public sealed class TableService(
 
     private bool TryStartHand(TableState table)
     {
+        if (table.NextHandStartUtc is { } startAt && clock.UtcNow < startAt)
+        {
+            return false;
+        }
+
         if (!table.CanStartHand)
         {
+            table.CurrentHand = null;
+            table.Status = TableStatus.WaitingForPlayers;
             return false;
         }
 
@@ -338,6 +377,8 @@ public sealed class TableService(
         var order = table.ActiveSeatsFromButton(table.ButtonSeatIndex);
         if (order.Count < table.Config.MinPlayersToStart)
         {
+            table.CurrentHand = null;
+            table.Status = TableStatus.WaitingForPlayers;
             return false;
         }
 
@@ -402,6 +443,15 @@ public sealed class TableService(
         await using var _ = await distributedLock.AcquireAsync($"table:{tableId}", LockTimeout);
         var table = await repo.GetAsync(tableId) ?? throw new InvalidOperationException("Table not found.");
         await mutate(table);
-        await repo.SaveAsync(table);
+        
+        bool isEmpty = table.Seats.All(s => s.IsEmpty) && table.Waitlist.Count == 0 && table.Spectators.Count == 0;
+        if (isEmpty)
+        {
+            await repo.RemoveAsync(tableId);
+        }
+        else
+        {
+            await repo.SaveAsync(table);
+        }
     }
 }

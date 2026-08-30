@@ -12,6 +12,7 @@ public sealed record CreateTableRequest(
     string Name, int MinBuyIn, int MaxBuyIn, int SmallBlind, int BigBlind,
     bool IsPrivate, bool UseRealBankroll, int? MaxSeats, int? MinPlayersToStart);
 public sealed record RebuyRequest(int AdditionalChips);
+public sealed record UpdateNameRequest(string Name);
 
 public static class EndpointMappings
 {
@@ -47,8 +48,30 @@ public static class EndpointMappings
 
         iam.MapPost("/on-registered", async (RegisteredWebhookRequest req, IUserRepository users, WalletService wallet) =>
         {
-            await users.UpsertAsync(new UserSummary(req.UserId, req.Email, req.TimeZoneId ?? "UTC"));
+            var randomName = "Player" + Random.Shared.Next(1000, 9999);
+            await users.UpsertAsync(new UserSummary(req.UserId, req.Email, req.TimeZoneId ?? "UTC", randomName));
             await wallet.GrantSignupBonusAsync(req.UserId);
+            return Results.Ok();
+        });
+
+        // --- Authenticated profile API ---
+        var profileApi = app.MapGroup("/api/profile").RequireAuthorization();
+
+        profileApi.MapGet("/", async (ClaimsPrincipal user, IUserRepository users) =>
+        {
+            string userId = RequireUserId(user);
+            var summary = await users.GetAsync(userId);
+            return summary is null ? Results.NotFound() : Results.Ok(new { summary.DisplayName });
+        });
+
+        profileApi.MapPut("/display-name", async (UpdateNameRequest req, ClaimsPrincipal user, IUserRepository users) =>
+        {
+            string userId = RequireUserId(user);
+            var summary = await users.GetAsync(userId);
+            if (summary is not null)
+            {
+                await users.UpsertAsync(summary with { DisplayName = req.Name });
+            }
             return Results.Ok();
         });
 

@@ -57,9 +57,12 @@ services:
         condition: service_completed_successfully
     environment:
       DSN: postgres://kratos:kratos@kratos-db:5432/kratos?sslmode=disable
+      COURIER_SMTP_CONNECTION_URI: ${COURIER_SMTP_CONNECTION_URI:-smtps://mailslurper:1025/?skip_ssl_verify=true}
     ports:
       - "4433:4433" # public API
       - "4434:4434" # admin API
+    extra_hosts:
+      - "api:host-gateway" # Resolves webhook calls to the locally running API
     volumes:
       - ./ory/kratos:/etc/config/kratos
     command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
@@ -70,11 +73,14 @@ services:
     ports:
       - "4455:4455" # proxy — the frontend/API entrypoint
       - "4456:4456" # api
+    extra_hosts:
+      - "api:host-gateway" # Routes 'api' to your host machine when running backend locally
     volumes:
       - ./ory/oathkeeper:/etc/config/oathkeeper
     command: serve -c /etc/config/oathkeeper/oathkeeper.yml
 
   api:
+    profiles: ["app"]
     build:
       context: ../backend
     depends_on:
@@ -92,15 +98,6 @@ services:
     # 200 while this port was exposed. Oathkeeper reaches it as http://api:8080 over the compose
     # network, which needs no published port. Use `docker compose exec api` for direct debugging.
     expose: ["8080"]
-
-  web:
-    build:
-      context: ../frontend
-      args:
-        VITE_API_URL: http://localhost:4455
-        VITE_KRATOS_URL: http://localhost:4433
-    depends_on: [api]
-    ports: ["5173:80"]
 
 volumes:
   poker-db-data:

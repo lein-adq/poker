@@ -24,15 +24,17 @@ public sealed class EfUserRepository(PokerDbContext db) : IUserRepository
                 UserId = user.UserId,
                 Email = user.Email,
                 TimeZoneId = user.TimeZoneId,
+                DisplayName = user.DisplayName,
                 CreatedAtUtc = DateTimeOffset.UtcNow
             });
         }
         else
         {
             existing.TimeZoneId = user.TimeZoneId;
+            existing.DisplayName = user.DisplayName;
         }
         await db.SaveChangesAsync();
     }
 
-    private static UserSummary Map(UserEntity e) => new(e.UserId, e.Email, e.TimeZoneId);
+    private static UserSummary Map(UserEntity e) => new(e.UserId, e.Email, e.TimeZoneId, e.DisplayName);
 }

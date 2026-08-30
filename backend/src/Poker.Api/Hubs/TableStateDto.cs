@@ -1,4 +1,4 @@
-﻿using Poker.Application.Tables;
+using Poker.Application.Tables;
 using Poker.Domain.Cards;
 using Poker.GameEngine.Equity;
 using Poker.GameEngine.Hands;
@@ -13,22 +13,28 @@ public sealed record CardDto(string Rank, string Suit)
 public sealed record SeatDto(
     int Index,
     string? PlayerId,
+    string? PlayerName,
     int Stack,
     int PendingRebuyChips,
     bool IsAllIn,
     bool IsFolded,
+    int CurrentBet,
     IReadOnlyList<CardDto>? HoleCards,
     string? RevealedHandName,
     bool IsSittingOut);
 
 public sealed record PotDto(int Amount, IReadOnlyList<string> WinnerPlayerIds, IReadOnlyList<string> EligiblePlayerIds);
 
+public sealed record LegalActionsDto(bool CanCheck, bool CanCall, int CallAmount, int MinRaiseTo, int MaxRaiseTo);
+
 public sealed record HandDto(
     string Street,
     IReadOnlyList<CardDto> Board,
     string? CurrentActorPlayerId,
     DateTimeOffset? ActionDeadlineUtc,
-    IReadOnlyList<PotDto>? Result);
+    int TotalPot,
+    IReadOnlyList<PotDto>? Result,
+    LegalActionsDto? CurrentLegalActions);
 
 public sealed record EquityDto(string PlayerId, double WinPercent, double TiePercent);
 
@@ -42,14 +48,15 @@ public sealed record TableStateDto(
     IReadOnlyList<string> Spectators,
     int WaitlistCount,
     HandDto? Hand,
-    IReadOnlyList<EquityDto>? Equity)
+    IReadOnlyList<EquityDto>? Equity,
+    DateTimeOffset? NextHandStartUtc)
 {
     /// <summary>
     /// Builds the state as <paramref name="viewerPlayerId"/> should see it: a seated player always sees
     /// their own hole cards; everyone's hole cards become visible once the hand reaches showdown, or
     /// earlier if all remaining players are all-in (the PRD's early-reveal case) — never otherwise.
     /// </summary>
-    public static TableStateDto For(TableState table, string? viewerPlayerId)
+    public static TableStateDto For(TableState table, string? viewerPlayerId, IReadOnlyDictionary<string, string> displayNames)
     {
         var hand = table.CurrentHand;
         bool revealAll = hand is not null && ShouldRevealAllHoleCards(hand);
@@ -76,13 +83,17 @@ public sealed record TableStateDto(
             }
 
             var playerBetState = hand?.Players.FirstOrDefault(p => p.PlayerId == seat.PlayerId);
+            string? playerName = seat.PlayerId is not null && displayNames.TryGetValue(seat.PlayerId, out var name) ? name : seat.PlayerId?[..8];
+            
             return new SeatDto(
                 seat.Index,
                 seat.PlayerId,
+                playerName,
                 seat.Stack,
                 seat.PendingRebuyChips,
                 playerBetState?.IsAllIn ?? false,
                 playerBetState?.IsFolded ?? false,
+                playerBetState?.CommittedThisRound ?? 0,
                 holeCards,
                 revealedHandName,
                 seat.IsSittingOut);
@@ -93,7 +104,16 @@ public sealed record TableStateDto(
             hand.Board.Select(CardDto.From).ToList(),
             hand.CurrentActorId,
             table.ActionDeadlineUtc,
-            hand.Result?.Pots.Select(p => new PotDto(p.Amount, p.WinnerPlayerIds, p.EligiblePlayerIds)).ToList());
+            hand.Players.Sum(p => p.CommittedTotal),
+            hand.Result?.Pots.Select(p => new PotDto(p.Amount, p.WinnerPlayerIds, p.EligiblePlayerIds)).ToList(),
+            hand.CurrentActorId is not null ? 
+                new LegalActionsDto(
+                    hand.GetLegalActions(hand.CurrentActorId).CanCheck,
+                    hand.GetLegalActions(hand.CurrentActorId).CanCall,
+                    hand.GetLegalActions(hand.CurrentActorId).CallAmount,
+                    hand.GetLegalActions(hand.CurrentActorId).MinRaiseTo,
+                    hand.GetLegalActions(hand.CurrentActorId).MaxRaiseTo
+                ) : null);
 
         IReadOnlyList<EquityDto>? equity = null;
         if (hand is not null && hand.Result is null && revealAll)
@@ -113,7 +133,8 @@ public sealed record TableStateDto(
             table.Spectators.ToList(),
             table.Waitlist.Count,
             handDto,
-            equity);
+            equity,
+            table.NextHandStartUtc);
     }
 
     /// <summary>The PRD's "ALL IN before the river" case: everyone still in the hand has no more chips to bet.</summary>

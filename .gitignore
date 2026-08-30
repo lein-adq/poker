@@ -8,3 +8,9 @@ backend/**/obj/
 frontend/node_modules/
 frontend/dist/
 frontend/.env.local
+
+# Environments
+.env
+.env.*
+!.env.example
+infra/.env

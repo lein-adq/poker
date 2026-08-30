@@ -29,9 +29,9 @@ public sealed class TableHub(
         await broadcaster.BroadcastAsync(tableId);
     }
 
-    public async Task Sit(Guid tableId, int buyInChips)
+    public async Task Sit(Guid tableId, int buyInChips, int? seatIndex = null)
     {
-        await tableService.SitAsync(tableId, UserId, buyInChips);
+        await tableService.SitAsync(tableId, UserId, buyInChips, seatIndex);
         await TrackConnectionAsync(tableId);
         await tableService.TryStartHandAsync(tableId);
         await broadcaster.BroadcastAsync(tableId);

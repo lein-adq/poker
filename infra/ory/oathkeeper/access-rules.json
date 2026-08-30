@@ -2,7 +2,7 @@
   {
     "id": "poker-cors-preflight",
     "match": {
-      "url": "http://localhost:4455/<{api,hubs}>/<**>",
+      "url": "<http|https>://<**>/<{"api","hubs"}>/<**>",
       "methods": [
         "OPTIONS"
       ]
@@ -27,7 +27,7 @@
   {
     "id": "poker-api-authenticated",
     "match": {
-      "url": "http://localhost:4455/api/<**>",
+      "url": "<http|https>://<**>/api/<**>",
       "methods": [
         "GET",
         "POST",
@@ -56,7 +56,7 @@
   {
     "id": "poker-hubs-authenticated",
     "match": {
-      "url": "http://localhost:4455/hubs/<**>",
+      "url": "<http|https>://<**>/hubs/<**>",
       "methods": [
         "GET",
         "POST"
@@ -77,6 +77,20 @@
     ],
     "upstream": {
       "url": "http://api:8080"
+    }
+  },
+  {
+    "id": "poker-kratos",
+    "match": {
+      "url": "<http|https>://<**>/kratos/<**>",
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    },
+    "authenticators": [{"handler": "noop"}],
+    "authorizer": {"handler": "allow"},
+    "mutators": [{"handler": "noop"}],
+    "upstream": {
+      "url": "http://kratos:4433",
+      "strip_path": "/kratos"
     }
   }
 ]

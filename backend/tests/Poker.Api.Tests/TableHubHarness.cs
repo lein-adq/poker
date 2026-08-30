@@ -60,10 +60,11 @@ public sealed class TableHubHarness
         await tableService.CreateTableAsync(config);
 
         var clients = new RecordingClients();
+        var dummyUsers = new DummyUserRepository();
         var harness = new TableHubHarness
         {
             TableService = tableService,
-            Broadcaster = new TableBroadcaster(new RecordingHubContext<TableHub>(clients), tableService),
+            Broadcaster = new TableBroadcaster(new RecordingHubContext<TableHub>(clients), tableService, dummyUsers),
             Connections = new TableConnectionRegistry(),
             Clients = clients,
             GroupManager = new RecordingGroupManager(),
@@ -117,4 +118,11 @@ public sealed class TableHubHarness
 
     public static SeatDto SeatOf(TableStateDto state, string playerId) =>
         state.Seats.Single(s => s.PlayerId == playerId);
+
+    private sealed class DummyUserRepository : Poker.Application.Abstractions.IUserRepository
+    {
+        public Task<Poker.Application.Abstractions.UserSummary?> GetAsync(string userId) => Task.FromResult<Poker.Application.Abstractions.UserSummary?>(new(userId, "test@test.com", "UTC", userId));
+        public Task<IReadOnlyList<Poker.Application.Abstractions.UserSummary>> ListAllAsync() => Task.FromResult<IReadOnlyList<Poker.Application.Abstractions.UserSummary>>([]);
+        public Task UpsertAsync(Poker.Application.Abstractions.UserSummary user) => Task.CompletedTask;
+    }
 }

@@ -10,7 +10,7 @@ namespace Poker.Api.Hubs;
 /// allowed to see differs. Shared by <see cref="TableHub"/> and the server-side ticker so that state
 /// reaching clients from a player's action and state reaching them from the action clock are identical.
 /// </summary>
-public sealed class TableBroadcaster(IHubContext<TableHub> hub, TableService tableService)
+public sealed class TableBroadcaster(IHubContext<TableHub> hub, TableService tableService, Poker.Application.Abstractions.IUserRepository users)
 {
     public async Task BroadcastAsync(Guid tableId)
     {
@@ -25,9 +25,20 @@ public sealed class TableBroadcaster(IHubContext<TableHub> hub, TableService tab
             .Distinct()
             .ToList();
 
+        // Fetch all display names for viewers
+        var displayNames = new Dictionary<string, string>();
+        foreach (var id in viewers)
+        {
+            var user = await users.GetAsync(id!);
+            if (user is not null)
+            {
+                displayNames[id!] = string.IsNullOrEmpty(user.DisplayName) ? id![..8] : user.DisplayName;
+            }
+        }
+
         foreach (var viewerId in viewers)
         {
-            await hub.Clients.User(viewerId!).SendAsync("TableState", TableStateDto.For(table, viewerId));
+            await hub.Clients.User(viewerId!).SendAsync("TableState", TableStateDto.For(table, viewerId, displayNames));
         }
     }
 }

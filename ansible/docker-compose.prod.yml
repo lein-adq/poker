@@ -1,0 +1,108 @@
+name: poker-prod
+
+services:
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "letsencrypt:/letsencrypt"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: poker
+      POSTGRES_USER: poker
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes: ["poker-db-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+
+  kratos-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: kratos
+      POSTGRES_USER: kratos
+      POSTGRES_PASSWORD: ${KRATOS_DB_PASSWORD}
+    volumes: ["kratos-db-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kratos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kratos-migrate:
+    image: oryd/kratos:v1.3.1
+    depends_on:
+      kratos-db:
+        condition: service_healthy
+    environment:
+      DSN: postgres://kratos:${KRATOS_DB_PASSWORD}@kratos-db:5432/kratos?sslmode=disable
+    volumes:
+      - ./ory/kratos:/etc/config/kratos
+    command: migrate sql -e --yes
+
+  kratos:
+    image: oryd/kratos:v1.3.1
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    environment:
+      DSN: postgres://kratos:${KRATOS_DB_PASSWORD}@kratos-db:5432/kratos?sslmode=disable
+      COURIER_SMTP_CONNECTION_URI: ${COURIER_SMTP_CONNECTION_URI}
+      SERVE_PUBLIC_BASE_URL: https://api.boliviano.games/kratos/
+      SERVE_PUBLIC_CORS_ALLOWED_ORIGINS: "[\"https://boliviano.games\"]"
+      SELFSERVICE_DEFAULT_BROWSER_RETURN_URL: https://boliviano.games/
+      SELFSERVICE_ALLOWED_RETURN_URLS: "[\"https://boliviano.games\"]"
+      SELFSERVICE_FLOWS_REGISTRATION_UI_URL: https://boliviano.games/auth/register
+      SELFSERVICE_FLOWS_LOGIN_UI_URL: https://boliviano.games/auth/login
+      SELFSERVICE_FLOWS_SETTINGS_UI_URL: https://boliviano.games/account/settings
+    volumes:
+      - ./ory/kratos:/etc/config/kratos
+    command: serve -c /etc/config/kratos/kratos.yml
+
+  oathkeeper:
+    image: oryd/oathkeeper:v0.40
+    depends_on: [kratos]
+    volumes:
+      - ./ory/oathkeeper:/etc/config/oathkeeper
+    command: serve -c /etc/config/oathkeeper/oathkeeper.yml
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.oathkeeper.rule=Host(`api.boliviano.games`)"
+      - "traefik.http.routers.oathkeeper.entrypoints=websecure"
+      - "traefik.http.routers.oathkeeper.tls.certresolver=myresolver"
+      - "traefik.http.services.oathkeeper.loadbalancer.server.port=4455"
+
+  api:
+    image: ${DOCKERHUB_USERNAME}/poker-api:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Database=poker;Username=poker;Password=${DB_PASSWORD}"
+      ConnectionStrings__Redis: "redis:6379"
+      Cors__AllowedOrigins__0: "https://boliviano.games"
+
+volumes:
+  poker-db-data:
+  kratos-db-data:
+  letsencrypt:

@@ -80,6 +80,7 @@ export default function RegisterPage() {
 
   return (
     <div className="auth-page">
+      <div className="auth-logo">Pokercito.lol</div>
       <h1>Create your account</h1>
       <p className="auth-hint">
         We only accept email addresses from known providers (Gmail, Outlook, iCloud, etc.) to keep
@@ -88,10 +89,8 @@ export default function RegisterPage() {
       {error && <p className="error">{error}</p>}
       {step === "email" ? (
         <form onSubmit={handleRequestCode}>
-          <label>
-            Email
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
+          <label>Email</label>
+          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" />
           <button type="submit" disabled={busy || !flow}>
             {busy ? "Sending code…" : "Send me a code"}
           </button>
@@ -99,18 +98,16 @@ export default function RegisterPage() {
       ) : (
         <form onSubmit={handleSubmitCode}>
           <p>We sent a code to {email}. Enter it below.</p>
-          <label>
-            Code
-            <input required value={code} onChange={(e) => setCode(e.target.value)} />
-          </label>
+          <label>Code</label>
+          <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="000000" />
           <button type="submit" disabled={busy}>
             {busy ? "Verifying…" : "Verify & create account"}
           </button>
         </form>
       )}
-      <p>
+      <span className="auth-link">
         Already have an account? <Link to="/auth/login">Log in</Link>
-      </p>
+      </span>
     </div>
   );
 }

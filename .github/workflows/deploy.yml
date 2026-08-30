@@ -1,0 +1,57 @@
+name: Deploy API to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/boliviano-api:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H 2607:a2c0:800::6c >> ~/.ssh/known_hosts
+
+      - name: Setup Ansible
+        run: sudo apt-get update && sudo apt-get install -y ansible
+
+      - name: Run Ansible Playbook
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          echo "[vps]" > ansible/inventory.ini
+          echo "2607:a2c0:800::6c ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_rsa" >> ansible/inventory.ini
+          
+          ansible-playbook -i ansible/inventory.ini ansible/deploy.yml \
+            -e "dockerhub_user=${{ secrets.DOCKERHUB_USERNAME }}" \
+            -e "db_password=${{ secrets.DB_PASSWORD }}" \
+            -e "kratos_db_password=${{ secrets.KRATOS_DB_PASSWORD }}" \
+            -e "acme_email=${{ secrets.ACME_EMAIL }}" \
+            -e "courier_smtp_connection_uri=${{ secrets.COURIER_SMTP_CONNECTION_URI }}"

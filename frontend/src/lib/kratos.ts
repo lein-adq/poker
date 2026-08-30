@@ -40,9 +40,11 @@ async function submitFlow(flow: KratosFlow, body: Record<string, unknown>): Prom
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ ...body, csrf_token: csrfToken(flow) }),
   });
+  
   const json = await res.json();
-  if (res.ok && json.identity) {
-    return { ok: true, flow: json, session: json as KratosSession };
+  
+  if (res.ok) {
+    return { ok: true, flow: json, session: json.session as KratosSession };
   }
   if (json.ui) {
     return { ok: false, flow: json as KratosFlow };
@@ -81,6 +83,6 @@ export async function logout(): Promise<void> {
   });
   if (res.ok) {
     const { logout_url } = await res.json();
-    await fetch(logout_url, { credentials: "include" });
+    window.location.href = logout_url;
   }
 }

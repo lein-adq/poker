@@ -6,10 +6,12 @@ export interface CardDto {
 export interface SeatDto {
   index: number;
   playerId: string | null;
+  playerName: string | null;
   stack: number;
   pendingRebuyChips: number;
   isAllIn: boolean;
   isFolded: boolean;
+  currentBet: number;
   holeCards: CardDto[] | null;
   revealedHandName: string | null;
   isSittingOut: boolean;
@@ -21,13 +23,22 @@ export interface PotDto {
   eligiblePlayerIds: string[];
 }
 
+export interface LegalActionsDto {
+  canCheck: boolean;
+  canCall: boolean;
+  callAmount: number;
+  minRaiseTo: number;
+  maxRaiseTo: number;
+}
+
 export interface HandDto {
   street: "Preflop" | "Flop" | "Turn" | "River" | "Showdown";
   board: CardDto[];
   currentActorPlayerId: string | null;
-  /** When the current actor's clock runs out and the server acts for them. */
   actionDeadlineUtc: string | null;
+  totalPot: number;
   result: PotDto[] | null;
+  currentLegalActions: LegalActionsDto | null;
 }
 
 export interface EquityDto {
@@ -47,6 +58,7 @@ export interface TableStateDto {
   waitlistCount: number;
   hand: HandDto | null;
   equity: EquityDto[] | null;
+  nextHandStartUtc: string | null;
 }
 
 export interface ChatMessageDto {

@@ -69,14 +69,13 @@ export default function LoginPage() {
 
   return (
     <div className="auth-page">
+      <div className="auth-logo">Pokercito.lol</div>
       <h1>Log in</h1>
       {error && <p className="error">{error}</p>}
       {step === "email" ? (
         <form onSubmit={handleRequestCode}>
-          <label>
-            Email
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
+          <label>Email</label>
+          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" />
           <button type="submit" disabled={busy || !flow}>
             {busy ? "Sending code…" : "Send me a code"}
           </button>
@@ -84,18 +83,16 @@ export default function LoginPage() {
       ) : (
         <form onSubmit={handleSubmitCode}>
           <p>We sent a code to {email}. Enter it below.</p>
-          <label>
-            Code
-            <input required value={code} onChange={(e) => setCode(e.target.value)} />
-          </label>
+          <label>Code</label>
+          <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="000000" />
           <button type="submit" disabled={busy}>
             {busy ? "Verifying…" : "Log in"}
           </button>
         </form>
       )}
-      <p>
+      <span className="auth-link">
         New here? <Link to="/auth/register">Create an account</Link>
-      </p>
+      </span>
     </div>
   );
 }

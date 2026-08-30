@@ -11,7 +11,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(body.error ?? `Request failed (${res.status})`);
   }
   if (res.status === 204) return undefined as T;
-  return res.json();
+  
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text);
 }
 
 export interface WalletBalance {
@@ -46,4 +49,7 @@ export const api = {
   }) => request<TableSummary>("/api/tables/", { method: "POST", body: JSON.stringify(input) }),
   requestRebuy: (tableId: string, additionalChips: number) =>
     request<void>(`/api/tables/${tableId}/rebuy`, { method: "POST", body: JSON.stringify({ additionalChips }) }),
+  getProfile: () => request<{ id: string; displayName: string | null; role: string }>("/api/profile/"),
+  updateProfile: (displayName: string) => 
+    request<void>("/api/profile/display-name", { method: "PUT", body: JSON.stringify({ name: displayName }) }),
 };
